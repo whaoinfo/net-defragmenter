@@ -3,32 +3,40 @@ package collection
 import (
 	"context"
 	"fmt"
+	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
 	"github.com/whaoinfo/net-defragmenter/internal/handler"
+	"github.com/whaoinfo/net-defragmenter/internal/linkqueue"
+	"github.com/whaoinfo/net-defragmenter/monition"
 	"time"
 )
 
-func newCollector(id, maxListenChanCap int, tickerInterval time.Duration) *Collector {
-	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+func newCollector(id, maxListenChanCap uint32, tickerInterval time.Duration,
+	compPktQueue *linkqueue.LinkQueue, monitor *monition.Monitor) *Collector {
 
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	return &Collector{
 		id:             id,
 		tickerInterval: tickerInterval,
 		cancelCtx:      cancelCtx,
 		cancelFunc:     cancelFunc,
 		listenChan:     make(chan *fragment.Metadata, maxListenChanCap),
+		monitor:        monitor,
 		fragSetMap:     make(map[string]*fragment.Set),
+		compPktQueue:   compPktQueue,
 	}
 }
 
 type Collector struct {
-	id             int
+	id             uint32
 	tickerInterval time.Duration
 	cancelCtx      context.Context
 	cancelFunc     context.CancelFunc
 	listenChan     chan *fragment.Metadata
 
-	fragSetMap map[string]*fragment.Set
+	monitor      *monition.Monitor
+	fragSetMap   map[string]*fragment.Set
+	compPktQueue *linkqueue.LinkQueue
 }
 
 func (t *Collector) start() {
@@ -93,8 +101,16 @@ func (t *Collector) acceptFragment(fragMetadata *fragment.Metadata) error {
 		return nil
 	}
 
-	hd.Reassembly(fragSet)
+	pkt, reassemblyErr := hd.Reassembly(fragSet)
+	if reassemblyErr != nil {
+		return reassemblyErr
+	}
 
+	t.compPktQueue.SafetyPutValue(&definition.CompletePacket{
+		InIdentifier: fragMetadata.InIdentifier,
+		FragGroup:    fragMetadata.FragGroup,
+		Pkt:          pkt,
+	})
 	return nil
 }
 

@@ -6,11 +6,12 @@ import (
 )
 
 type Metadata struct {
-	ID             string
-	HashValue      uint32
-	FragType       definition.FragmentType
-	Identification uint32
-	FlowHashValue  uint64
-	CreateTp       int64
-	Pkt            gopacket.Packet
+	ID            string
+	InIdentifier  uint64
+	HashValue     uint32
+	FragType      definition.FragmentType
+	FragGroup     uint32
+	FlowHashValue uint64
+	CreateTp      int64
+	Pkt           gopacket.Packet
 }

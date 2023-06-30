@@ -28,7 +28,9 @@ var (
 
 type IPV6Handler struct{}
 
-func (t *IPV6Handler) ParseAndFilter(buf []byte) (retPassed bool, retProto interface{}, retPayload []byte, retErr error) {
+func (t *IPV6Handler) ParseLayer(buf []byte) (isFragType bool,
+	retProto interface{}, retPayload []byte, retErr error) {
+
 	bufLen := len(buf)
 	if bufLen <= IPV6HdrLen {
 		retErr = errors.New("unable to parse IPV6 package, bufLen <= IPV6HdrLen")
@@ -38,10 +40,8 @@ func (t *IPV6Handler) ParseAndFilter(buf []byte) (retPassed bool, retProto inter
 	// Offset to next header
 	buf = buf[IPVersionLen+IPV6TrafficClassFlowLabelLen+IPV6PayloadLen:]
 	retProto = layers.IPProtocol(buf[0])
-	payload := buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
-
-	retPassed = retProto == layers.IPProtocolIPv6Fragment
-	retPayload = payload
+	isFragType = retProto == layers.IPProtocolIPv6Fragment
+	retPayload = buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
 	return
 }
 
@@ -60,7 +60,7 @@ func (t *IPV6Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Pac
 		return errors.New("layer3 is not an IPv4 Fragment")
 	}
 
-	fragMetadata.Identification = frag.Identification
+	fragMetadata.FragGroup = frag.Identification
 	fragMetadata.FlowHashValue = netLayer.NetworkFlow().FastHash()
 	return nil
 }
@@ -81,7 +81,7 @@ func (t *IPV6Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment
 				// todo
 				return false
 			}
-			if elemFrag.FragmentOffset < frag.FragmentOffset {
+			if elemFrag.FragmentOffset > frag.FragmentOffset {
 				fragSet.InsertBefore(frag, elem)
 				return false
 			}
