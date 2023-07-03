@@ -5,26 +5,47 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/handler"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 )
 
-func parseNetWorkerLayer(ethType layers.EthernetType, payload []byte) (definition.FragmentType, layers.IPProtocol,
-	[]byte, error) {
+func parseNetWorkerLayer(ethType layers.EthernetType, payload []byte) (retFragType definition.FragmentType,
+	retIdentifier uint32, retProto layers.IPProtocol, retPayload []byte, retErr error) {
 
-	fragType := definition.GetFragmentTypeByLayerEnum(ethType)
-	hd := handler.GetHandler(fragType)
+	retFragType = definition.InvalidFragType
+
+	var mappingFragType definition.FragmentType
+	switch ethType {
+	case layers.EthernetTypeIPv4:
+		mappingFragType = definition.IPV4FragType
+		break
+	case layers.EthernetTypeIPv6:
+		mappingFragType = definition.IPV6FragType
+		break
+	default:
+		return
+	}
+
+	hd := handler.GetHandler(mappingFragType)
 	if hd == nil {
-		return definition.InvalidFragType, 0, nil, fmt.Errorf("handler with fragment type %v dose not exists", fragType)
+		libstats.AddTotalFilterHandleNilErrNum(1)
+		retErr = fmt.Errorf("handler with fragment type %v dose not exists", mappingFragType)
+		return
 	}
 
-	isFragType, iIpProto, retPayload, parseErr := hd.ParseLayer(payload)
+	var reply definition.ReplyParseLayerParameters
+	parseErr, parseErrType := hd.ParseLayer(payload, &reply)
 	if parseErr != nil {
-		return definition.InvalidFragType, 0, nil, parseErr
+		retErr = parseErr
+		libstats.AddTotalFilterErrStatsNum(1, parseErrType)
+		return
 	}
 
-	retIpProto := iIpProto.(layers.IPProtocol)
-	if !isFragType {
-		fragType = definition.InvalidFragType
+	retProto = reply.Proto.(layers.IPProtocol)
+	if !reply.IsFragType {
+		return
 	}
 
-	return fragType, retIpProto, retPayload, nil
+	//retIdentifier = reply.Identifier
+	retFragType = mappingFragType
+	return
 }

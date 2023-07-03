@@ -24,13 +24,13 @@ var (
 	}
 )
 
-func GetFragmentTypeByLayerEnum(layerEnum interface{}) FragmentType {
-	fragType, exist := layerEnumMapping[layerEnum]
-	if !exist {
-		return InvalidFragType
-	}
-	return fragType
-}
+//func GetFragmentTypeByLayerEnum(layerEnum interface{}) FragmentType {
+//	fragType, exist := layerEnumMapping[layerEnum]
+//	if !exist {
+//		return InvalidFragType
+//	}
+//	return fragType
+//}
 
 type CompletePacket struct {
 	InIdentifier uint64
@@ -48,4 +48,11 @@ func (t *CompletePacket) GetFragGroup() uint32 {
 
 func (t *CompletePacket) GetPacket() gopacket.Packet {
 	return t.Pkt
+}
+
+type ReplyParseLayerParameters struct {
+	IsFragType bool
+	Identifier uint32
+	Proto      interface{}
+	//Payload    []byte
 }

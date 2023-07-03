@@ -5,7 +5,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
-	"github.com/whaoinfo/net-defragmenter/monition"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 )
 
@@ -32,8 +32,7 @@ func regClassifyFunc(fragmentType definition.FragmentType, f ClassifyFuncType) e
 	return nil
 }
 
-func NewClassifierMgr(opt definition.ClassifierOption, distributeFunc fragment.DistributeFragmentFunc,
-	monitor *monition.Monitor) (*ClassifierMgr, error) {
+func NewClassifierMgr(opt definition.ClassifierOption, distributeFunc fragment.DistributeFragmentFunc) (*ClassifierMgr, error) {
 
 	if opt.MaxClassifiersNum <= 0 {
 		return nil, errors.New("the maxMembersNum parameter is less than or equal to 0")
@@ -41,12 +40,11 @@ func NewClassifierMgr(opt definition.ClassifierOption, distributeFunc fragment.D
 
 	members := make([]*Classifier, 0, opt.MaxClassifiersNum)
 	for i := 0; i < int(opt.MaxClassifiersNum); i++ {
-		members = append(members, newClassifier(i, distributeFunc, monitor))
+		members = append(members, newClassifier(i, distributeFunc))
 	}
 
 	mgr := &ClassifierMgr{
 		status:                 definition.InitializedStatus,
-		monitor:                monitor,
 		members:                members,
 		distributeFragmentFunc: distributeFunc,
 	}
@@ -56,7 +54,6 @@ func NewClassifierMgr(opt definition.ClassifierOption, distributeFunc fragment.D
 
 type ClassifierMgr struct {
 	status                 int32
-	monitor                *monition.Monitor
 	totalAllocateNum       uint64
 	members                []*Classifier
 	distributeFragmentFunc fragment.DistributeFragmentFunc
@@ -100,25 +97,24 @@ func (t *ClassifierMgr) takeIdleMember() *Classifier {
 	return nil
 }
 
-func (t *ClassifierMgr) ClassifyFragment(fragType definition.FragmentType, buf []byte, inIdentifier uint64) (uint32, error) {
-	// Temporarily change to synchronous mode for processing
-	//mbr := t.takeIdleMember()
-	//t.monitor.AddTotalTakeIdleClsMbrNum(mbr != nil, 1)
-	//if mbr != nil {
-	//	mbr.ctx <- &executionContext{
-	//		fragType:     fragType,
-	//		pktBuf:       buf,
-	//		inIdentifier: inIdentifier,
-	//	}
-	//	return nil
-	//}
+func (t *ClassifierMgr) ClassifyFragment(fragType definition.FragmentType, buf []byte, inIdentifier uint64) error {
+	mbr := t.takeIdleMember()
+	libstats.AddTotalTakeIdleClsMbrNum(mbr != nil, 1)
+	if mbr != nil {
+		mbr.ctx <- &executionContext{
+			fragType:     fragType,
+			pktBuf:       buf,
+			inIdentifier: inIdentifier,
+		}
+		return nil
+	}
 
-	t.monitor.AddTotalTakeIdleClsMbrNum(false, 1)
-	fragMetadata, genErr := generateFragmentMetadata(fragType, buf, inIdentifier, t.monitor)
+	fragMetadata, genErr := generateFragmentMetadata(fragType, buf, inIdentifier)
 	if genErr != nil {
-		return 0, nil
+		// todo
+		return nil
 	}
 	t.distributeFragmentFunc(fragMetadata)
 
-	return fragMetadata.FragGroup, nil
+	return nil
 }

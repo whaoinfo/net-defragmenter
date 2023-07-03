@@ -31,7 +31,6 @@ type ClassifierOption struct {
 }
 
 type Option struct {
-	EnableMonitor     bool
 	PickFragmentTypes []FragmentType
 	CollectorOption   CollectorOption
 	ClassifierOption  ClassifierOption

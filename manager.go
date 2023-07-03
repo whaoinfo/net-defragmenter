@@ -7,7 +7,7 @@ import (
 	"github.com/whaoinfo/net-defragmenter/internal/classification"
 	"github.com/whaoinfo/net-defragmenter/internal/collection"
 	"github.com/whaoinfo/net-defragmenter/internal/layerfilter"
-	"github.com/whaoinfo/net-defragmenter/monition"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 )
 
@@ -28,31 +28,28 @@ func NewManager(opt *definition.Option) (*Manager, error) {
 
 type Manager struct {
 	status        int32
-	monitor       *monition.Monitor
 	filter        *layerfilter.Filter
 	classifierMgr *classification.ClassifierMgr
 	collectorMgr  *collection.CollectorMgr
 }
 
 func (t *Manager) initialize(opt *definition.Option) error {
-	monitor := monition.NewMonitor(opt.EnableMonitor)
 
-	filter, newFilterErr := layerfilter.NewFilter(opt.PickFragmentTypes, monitor)
+	filter, newFilterErr := layerfilter.NewFilter(opt.PickFragmentTypes)
 	if newFilterErr != nil {
 		return fmt.Errorf("NewFilter failed, %v", newFilterErr)
 	}
 
-	collectorMgr, newCollectorErr := collection.NewCollectorMgr(opt.CollectorOption, monitor)
+	collectorMgr, newCollectorErr := collection.NewCollectorMgr(opt.CollectorOption)
 	if newCollectorErr != nil {
 		return fmt.Errorf("NewCollectorMgr failed, %v", newCollectorErr)
 	}
 
-	clsMgr, newClsMgrErr := classification.NewClassifierMgr(opt.ClassifierOption, collectorMgr.DistributeFragment, monitor)
+	clsMgr, newClsMgrErr := classification.NewClassifierMgr(opt.ClassifierOption, collectorMgr.DistributeFragment)
 	if newClsMgrErr != nil {
 		return fmt.Errorf("NewClassifierMgr failed, %v", newClsMgrErr)
 	}
 
-	t.monitor = monitor
 	t.filter = filter
 	t.collectorMgr = collectorMgr
 	t.classifierMgr = clsMgr
@@ -84,21 +81,21 @@ func (t *Manager) DeliverPacket(pktBuf []byte, inIdentifier uint64) (uint32, err
 		return 0, fmt.Errorf("manager not started, current status is %v", t.status)
 	}
 
-	t.monitor.AddTotalDeliverPacketPktNum(1)
-	passed, fragType, filterErr := t.filter.ParseAndFilterPacket(pktBuf)
+	libstats.AddTotalDeliverPacketPktNum(1)
+	fragType, identifier, filterErr := t.filter.ParseAndFilterPacket(pktBuf)
 	if filterErr != nil {
 		return 0, filterErr
 	}
-	if !passed {
+
+	if fragType <= definition.InvalidFragType || fragType >= definition.MaxInvalidFragType {
 		return 0, nil
 	}
 
-	fragGroup, classifyErr := t.classifierMgr.ClassifyFragment(fragType, pktBuf, inIdentifier)
-	if classifyErr != nil {
-		return 0, classifyErr
+	if err := t.classifierMgr.ClassifyFragment(fragType, pktBuf, inIdentifier); err != nil {
+		return 0, err
 	}
 
-	return fragGroup, nil
+	return identifier, nil
 }
 
 func (t *Manager) PopCompletePackets(count int) ([]*definition.CompletePacket, error) {
@@ -111,8 +108,4 @@ func (t *Manager) PopCompletePackets(count int) ([]*definition.CompletePacket, e
 	}
 
 	return t.collectorMgr.PopCompletePackets(count)
-}
-
-func (t *Manager) GetMonitor() *monition.Monitor {
-	return t.monitor
 }

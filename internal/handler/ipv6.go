@@ -2,9 +2,11 @@ package handler
 
 import (
 	"container/list"
+	"encoding/binary"
 	"errors"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
 )
 
@@ -18,6 +20,12 @@ const (
 	IPV6DstAddrLen               = 16
 	IPV6HdrLen                   = IPVersionLen + IPV6TrafficClassFlowLabelLen + IPV6PayloadLen + IPV6NextHeaderLen +
 		IPV6HopLimitLen + IPV6SrcAddrLen + IPV6DstAddrLen
+	IPV6FragmentHdr                 = 8
+	IPV6FragHdrIdentificationOffset = 4
+
+	IPV6FragLayerIdx = 2
+
+	FragOffsetMulNum = 8
 )
 
 var (
@@ -28,50 +36,67 @@ var (
 
 type IPV6Handler struct{}
 
-func (t *IPV6Handler) ParseLayer(buf []byte) (isFragType bool,
-	retProto interface{}, retPayload []byte, retErr error) {
-
+func (t *IPV6Handler) ParseLayer(buf []byte, reply *definition.ReplyParseLayerParameters) (retErr error, retErrType definition.ErrResultType) {
 	bufLen := len(buf)
 	if bufLen <= IPV6HdrLen {
 		retErr = errors.New("unable to parse IPV6 package, bufLen <= IPV6HdrLen")
+		retErrType = definition.ErrResultIPV6HdrLenInsufficient
 		return
 	}
 
 	// Offset to next header
 	buf = buf[IPVersionLen+IPV6TrafficClassFlowLabelLen+IPV6PayloadLen:]
-	retProto = layers.IPProtocol(buf[0])
-	isFragType = retProto == layers.IPProtocolIPv6Fragment
-	retPayload = buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
+	reply.Proto = layers.IPProtocol(buf[0])
+	reply.IsFragType = reply.Proto == layers.IPProtocolIPv6Fragment
+	payload := buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
+	if !reply.IsFragType {
+		return
+	}
+
+	if len(payload) <= IPV6FragmentHdr {
+		retErr = errors.New("unable to parse IPV6 fragment header, len(retPayload) <= IPV6FragmentHdr")
+		retErrType = definition.ErrResultIPV6FragHdrLenInsufficient
+		return
+	}
+	fragmentHeader := payload[:IPV6FragmentHdr]
+	identifierBytes := fragmentHeader[IPV6FragHdrIdentificationOffset:]
+	reply.Identifier = binary.BigEndian.Uint32(identifierBytes)
+
 	return
 }
 
-func (t *IPV6Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) error {
+func (t *IPV6Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) (error, definition.ErrResultType) {
+	pktLayers := fragMetadata.Pkt.Layers()
+	if len(pktLayers) <= IPV6FragLayerIdx {
+		return errors.New("layers less than 3"), definition.ErrResultNoIPV6FragLayer
+	}
+	frag, convOk := pkt.Layers()[IPV6FragLayerIdx].(*layers.IPv6Fragment)
+	if !convOk {
+		return errors.New("layer3 is not an IPv4 Fragment"), definition.ErrResultConvIPv6Frag
+	}
+
 	netLayer := pkt.NetworkLayer()
 	if netLayer == nil {
-		return errors.New("layer3 is a nil pointer")
-	}
-
-	if len(pkt.Layers()) < 3 {
-		return errors.New("layers less than 3")
-	}
-
-	frag, convOk := pkt.Layers()[2].(*layers.IPv6Fragment)
-	if !convOk {
-		return errors.New("layer3 is not an IPv4 Fragment")
+		return errors.New("layer3 is a nil pointer"), definition.ErrResultIPV6NetworkLayerNil
 	}
 
 	fragMetadata.FragGroup = frag.Identification
 	fragMetadata.FlowHashValue = netLayer.NetworkFlow().FastHash()
-	return nil
+	return nil, definition.NonErrResultType
 }
 
-func (t *IPV6Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment.Set) error {
-	frag, convOk := fragMetadata.Pkt.Layers()[2].(*layers.IPv6Fragment)
-	if !convOk {
-		return errors.New("the layer3 is not an IPv6 Fragment")
+func (t *IPV6Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment.Set) (error, definition.ErrResultType) {
+	pktLayers := fragMetadata.Pkt.Layers()
+	if len(pktLayers) <= IPV6FragLayerIdx {
+		return errors.New("the layer3 is not an IPv6 Fragment"), definition.ErrResultNoIPV6FragLayer
 	}
 
-	fragOffset := frag.FragmentOffset * 8
+	frag, convOk := fragMetadata.Pkt.Layers()[IPV6FragLayerIdx].(*layers.IPv6Fragment)
+	if !convOk {
+		return errors.New("the layer3 is not an IPv6 Fragment"), definition.ErrResultConvIPv6Frag
+	}
+
+	fragOffset := frag.FragmentOffset * FragOffsetMulNum
 	if fragOffset >= fragSet.GetHighest() {
 		fragSet.PushBack(frag)
 	} else {
@@ -103,13 +128,17 @@ func (t *IPV6Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment
 		fragSet.SetFinalMetadata(fragMetadata)
 	}
 
-	return nil
+	return nil, definition.NonErrResultType
 }
 
-func (t *IPV6Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error) {
+func (t *IPV6Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error, definition.ErrResultType) {
 	var l3Payload []byte
 	fragSet.IterElements(func(elem *list.Element) bool {
-		frag, _ := elem.Value.(*layers.IPv6Fragment)
+		frag, ok := elem.Value.(*layers.IPv6Fragment)
+		if !ok {
+			// todo
+			return true
+		}
 		l3Payload = append(l3Payload, frag.Payload...)
 		return true
 	})
@@ -138,7 +167,7 @@ func (t *IPV6Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error)
 
 	buf := gopacket.NewSerializeBuffer()
 	if err := newIp.SerializeTo(buf, *defaultSerializeOpts); err != nil {
-		return nil, err
+		return nil, err, definition.ErrResultIPv6Serialize
 	}
 
 	newPktBuf := make([]byte, len(l2Content)+len(buf.Bytes())+len(l3Payload))
@@ -148,7 +177,7 @@ func (t *IPV6Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error)
 
 	retPkt := gopacket.NewPacket(newPktBuf, layers.LinkTypeEthernet, gopacket.Default)
 	if retPkt.ErrorLayer() != nil {
-		return nil, retPkt.ErrorLayer().Error()
+		return nil, retPkt.ErrorLayer().Error(), definition.ErrResultTypeIPV6NewPacket
 	}
-	return retPkt, nil
+	return retPkt, nil, definition.NonErrResultType
 }

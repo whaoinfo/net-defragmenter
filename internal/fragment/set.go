@@ -87,3 +87,33 @@ func (t *Set) IterElements(f func(elem *list.Element) bool) {
 		}
 	}
 }
+
+func (t *Set) GetFragmentListLen() int {
+	return t.list.Len()
+}
+
+func (t *Set) Release() (clenListLen int) {
+	if t.finalMetadata != nil {
+		//t.finalMetadata.Pkt = nil
+		t.finalMetadata = nil
+	}
+
+	clenListLen = t.cleanUpList()
+	return
+}
+
+func (t *Set) cleanUpList() int {
+	var elems []*list.Element
+	for e := t.list.Front(); e != nil; e = e.Next() {
+		elems = append(elems, e)
+	}
+	for _, elem := range elems {
+		t.list.Remove(elem)
+	}
+
+	return len(elems)
+}
+
+func (t *Set) GetCreateTimestamp() int64 {
+	return t.createTp
+}

@@ -1,7 +1,5 @@
 package definition
 
-import "github.com/whaoinfo/net-defragmenter/monition"
-
 const (
 	InitializeStatus int32 = iota
 	InitializedStatus
@@ -9,6 +7,27 @@ const (
 	StoppedStatus
 )
 
-type ManagerProxy interface {
-	GetMonitor() *monition.Monitor
-}
+type ErrResultType uint16
+
+const (
+	NonErrResultType ErrResultType = iota
+	//ErrResultTypeHandleNil
+	ErrResultTypeNewPacket
+
+	ErrResultIPV4NetworkLayerNil
+	ErrResultConvIPV4
+	ErrResultIPv4Serialize
+	ErrResultIPV4NewPacket
+	ErrResultIPV4HdrLenInsufficient
+
+	ErrResultIPV6NetworkLayerNil
+	ErrResultNoIPV6FragLayer
+	ErrResultConvIPv6Frag
+	ErrResultIPv6Serialize
+	ErrResultTypeIPV6NewPacket
+	ErrResultIPV6HdrLenInsufficient
+	ErrResultIPV6FragHdrLenInsufficient
+
+	//ErrResultTypeCollect
+	//ErrResultTypeReassembly
+)

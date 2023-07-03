@@ -7,12 +7,12 @@ import (
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
 	"github.com/whaoinfo/net-defragmenter/internal/handler"
 	"github.com/whaoinfo/net-defragmenter/internal/linkqueue"
-	"github.com/whaoinfo/net-defragmenter/monition"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 	"time"
 )
 
 func newCollector(id, maxListenChanCap uint32, tickerInterval time.Duration,
-	compPktQueue *linkqueue.LinkQueue, monitor *monition.Monitor) *Collector {
+	compPktQueue *linkqueue.LinkQueue) *Collector {
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	return &Collector{
@@ -21,7 +21,6 @@ func newCollector(id, maxListenChanCap uint32, tickerInterval time.Duration,
 		cancelCtx:      cancelCtx,
 		cancelFunc:     cancelFunc,
 		listenChan:     make(chan *fragment.Metadata, maxListenChanCap),
-		monitor:        monitor,
 		fragSetMap:     make(map[string]*fragment.Set),
 		compPktQueue:   compPktQueue,
 	}
@@ -34,7 +33,6 @@ type Collector struct {
 	cancelFunc     context.CancelFunc
 	listenChan     chan *fragment.Metadata
 
-	monitor      *monition.Monitor
 	fragSetMap   map[string]*fragment.Set
 	compPktQueue *linkqueue.LinkQueue
 }
@@ -78,12 +76,26 @@ loopExit:
 }
 
 func (t *Collector) checkFragmentSetExpired() {
+	nowTp := time.Now().Unix()
+	var expiredSets []*fragment.Set
+	for _, fragSet := range t.fragSetMap {
+		if (nowTp - fragSet.GetCreateTimestamp()) > fragSetDurationSec {
+			expiredSets = append(expiredSets, fragSet)
+		}
+	}
 
+	for _, fragSet := range expiredSets {
+		delete(t.fragSetMap, fragSet.GetID())
+		fragSet.Release()
+		libstats.AddTotalReleaseFragSetThExpiredNum(1)
+	}
 }
 
 func (t *Collector) acceptFragment(fragMetadata *fragment.Metadata) error {
+	libstats.AddTotalAcceptFragNum(1)
 	hd := handler.GetHandler(fragMetadata.FragType)
 	if hd == nil {
+		libstats.AddTotalCollectHandleNilErrNum(1)
 		return fmt.Errorf("handler with fragment type %v dose not exists", fragMetadata.FragType)
 	}
 
@@ -91,26 +103,48 @@ func (t *Collector) acceptFragment(fragMetadata *fragment.Metadata) error {
 	if !exist {
 		t.fragSetMap[fragMetadata.ID] = fragment.NewFragmentSet(fragMetadata)
 		fragSet = t.fragSetMap[fragMetadata.ID]
+		libstats.AddTotalNewFragmentSetNum(1)
 	}
 
-	if err := hd.Collect(fragMetadata, fragSet); err != nil {
+	collectErr, collectErrType := hd.Collect(fragMetadata, fragSet)
+	if collectErr != nil {
+		libstats.AddTotalCollectErrStatsNum(1, collectErrType)
+		return collectErr
+	}
+
+	libstats.AddTotalAcceptFragSuccessfulNum(1)
+	if err := t.checkAndReassembly(fragSet, fragMetadata, hd); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (t *Collector) checkAndReassembly(fragSet *fragment.Set, fragMetadata *fragment.Metadata, hd handler.IHandler) error {
 	if !fragSet.CheckFinalMetadataExists() || fragSet.GetHighest() != fragSet.GetCurrentLen() {
 		return nil
 	}
 
-	pkt, reassemblyErr := hd.Reassembly(fragSet)
+	fragListLen := fragSet.GetFragmentListLen()
+	defer func() {
+		fragSet.Release()
+		libstats.AddTotalReleaseFragSetThReassemblyNum(1)
+	}()
+
+	pkt, reassemblyErr, errType := hd.Reassembly(fragSet)
 	if reassemblyErr != nil {
+		libstats.AddTotalReassemblyErrStatsNum(1, errType)
 		return reassemblyErr
 	}
 
+	libstats.AddTotalReassemblyFragNum(uint64(fragListLen))
+	libstats.AddTotalPushCompletePktNum(1)
 	t.compPktQueue.SafetyPutValue(&definition.CompletePacket{
 		InIdentifier: fragMetadata.InIdentifier,
 		FragGroup:    fragMetadata.FragGroup,
 		Pkt:          pkt,
 	})
+
 	return nil
 }
 

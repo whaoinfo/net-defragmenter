@@ -2,9 +2,11 @@ package handler
 
 import (
 	"container/list"
+	"encoding/binary"
 	"errors"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
 )
 
@@ -26,52 +28,53 @@ const (
 
 type IPV4Handler struct{}
 
-func (t *IPV4Handler) ParseLayer(buf []byte) (isFragType bool,
-	retProto interface{}, retPayload []byte, retErr error) {
-
+func (t *IPV4Handler) ParseLayer(buf []byte, reply *definition.ReplyParseLayerParameters) (retErr error, retErrType definition.ErrResultType) {
 	bufLen := len(buf)
 	if bufLen <= IPV4HdrLen {
 		retErr = errors.New("unable to parse IPV4 package, bufLen <= IPV4HdrLen")
+		retErrType = definition.ErrResultIPV4HdrLenInsufficient
 		return
 	}
 
-	// Offset to next header
-	buf = buf[IPVersionLen+IPV4DifferentiatedSvcFieldLen+IPV4TotalLengthFieldLen+IPV4IdentificationLen:]
+	buf = buf[IPVersionLen+IPV4DifferentiatedSvcFieldLen+IPV4TotalLengthFieldLen:]
+	reply.Identifier = uint32(binary.BigEndian.Uint16(buf))
+	buf = buf[IPV4IdentificationLen:]
+
 	ipV4Flags := buf[0]
 	fragOffset := buf[1]
 
 	buf = buf[IPV4FlagsLen+IPV4FragmentOffsetLen+IPV4TimeToLiveLen:]
-	retProto = layers.IPProtocol(buf[0])
+	reply.Proto = layers.IPProtocol(buf[0])
 
-	isFragType = (fragOffset != 0) || ((ipV4Flags & 0x20) != 0) || ((ipV4Flags & 0x1f) != 0)
+	reply.IsFragType = (fragOffset != 0) || ((ipV4Flags & 0x20) != 0) || ((ipV4Flags & 0x1f) != 0)
 	//isFragType = ipV4Flags != 0
 	//retPayload = buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
 	return
 }
 
-func (t *IPV4Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) error {
+func (t *IPV4Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) (error, definition.ErrResultType) {
 	netLayer := pkt.NetworkLayer()
 	if netLayer == nil {
-		return errors.New("the layer3 is a nil pointer")
+		return errors.New("the layer3 is a nil pointer"), definition.ErrResultIPV4NetworkLayerNil
 	}
 
 	frag, convOk := netLayer.(*layers.IPv4)
 	if !convOk {
-		return errors.New("the layer3 is not an IPv4 packet")
+		return errors.New("the layer3 is not an IPv4 packet"), definition.ErrResultConvIPV4
 	}
 
 	fragMetadata.FragGroup = uint32(frag.Id)
 	fragMetadata.FlowHashValue = netLayer.NetworkFlow().FastHash()
-	return nil
+	return nil, definition.NonErrResultType
 }
 
-func (t *IPV4Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment.Set) error {
+func (t *IPV4Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment.Set) (error, definition.ErrResultType) {
 	frag, convOk := fragMetadata.Pkt.NetworkLayer().(*layers.IPv4)
 	if !convOk {
-		return errors.New("the layer3 is not an IPv4 packet")
+		return errors.New("the layer3 is not an IPv4 packet"), definition.ErrResultConvIPV4
 	}
 
-	fragOffset := frag.FragOffset * 8
+	fragOffset := frag.FragOffset * FragOffsetMulNum
 	if fragOffset >= fragSet.GetHighest() {
 		fragSet.PushBack(frag)
 	} else {
@@ -103,10 +106,10 @@ func (t *IPV4Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment
 		fragSet.SetFinalMetadata(fragMetadata)
 	}
 
-	return nil
+	return nil, definition.NonErrResultType
 }
 
-func (t *IPV4Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error) {
+func (t *IPV4Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error, definition.ErrResultType) {
 	var l3Payload []byte
 	fragSet.IterElements(func(elem *list.Element) bool {
 		frag, _ := elem.Value.(*layers.IPv4)
@@ -140,7 +143,7 @@ func (t *IPV4Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error)
 
 	buf := gopacket.NewSerializeBuffer()
 	if err := newIp.SerializeTo(buf, *defaultSerializeOpts); err != nil {
-		return nil, err
+		return nil, err, definition.ErrResultIPv4Serialize
 	}
 
 	newPktBuf := make([]byte, len(l2Content)+len(buf.Bytes())+len(l3Payload))
@@ -150,7 +153,7 @@ func (t *IPV4Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error)
 
 	retPkt := gopacket.NewPacket(newPktBuf, layers.LinkTypeEthernet, gopacket.Default)
 	if retPkt.ErrorLayer() != nil {
-		return nil, retPkt.ErrorLayer().Error()
+		return nil, retPkt.ErrorLayer().Error(), definition.ErrResultIPV4NewPacket
 	}
-	return retPkt, nil
+	return retPkt, nil, definition.NonErrResultType
 }

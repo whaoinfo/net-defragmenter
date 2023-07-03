@@ -5,17 +5,19 @@ import (
 	"github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/fragment"
 	"github.com/whaoinfo/net-defragmenter/internal/linkqueue"
-	"github.com/whaoinfo/net-defragmenter/monition"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	compPktQueueCheckingSec = 30
+	//compPktQueueCheckingSec = 30
+	compPktQueueCheckingSec = 5
 	releaseCompPktAfterSec  = 10
+	fragSetDurationSec      = 10
 )
 
-func NewCollectorMgr(opt definition.CollectorOption, monitor *monition.Monitor) (*CollectorMgr, error) {
+func NewCollectorMgr(opt definition.CollectorOption) (*CollectorMgr, error) {
 	if opt.MaxCollectorsNum <= 0 {
 		return nil, errors.New("the maxMembersNum parameter is less than or equal to 0")
 	}
@@ -32,12 +34,11 @@ func NewCollectorMgr(opt definition.CollectorOption, monitor *monition.Monitor) 
 	compPktQueue := linkqueue.NewLinkQueue()
 	members := make([]*Collector, 0, opt.MaxCollectorsNum)
 	for i := 0; i < int(opt.MaxCollectorsNum); i++ {
-		members = append(members, newCollector(uint32(i), opt.MaxChannelCap, opt.TickerInterval, compPktQueue, monitor))
+		members = append(members, newCollector(uint32(i), opt.MaxChannelCap, opt.TickerInterval, compPktQueue))
 	}
 
 	mgr := &CollectorMgr{
 		status:             definition.InitializedStatus,
-		monitor:            monitor,
 		members:            members,
 		compPktQueue:       compPktQueue,
 		maxCompPktQueueLen: opt.MaxCompPktQueueLen,
@@ -47,7 +48,6 @@ func NewCollectorMgr(opt definition.CollectorOption, monitor *monition.Monitor) 
 
 type CollectorMgr struct {
 	status             int32
-	monitor            *monition.Monitor
 	maxCompPktQueueLen uint32
 	members            []*Collector
 	compPktQueue       *linkqueue.LinkQueue
@@ -58,7 +58,7 @@ func (t *CollectorMgr) Start() {
 		return
 	}
 
-	go t.checkCompletePktQueuePeriodically()
+	go t.checkCompletePktQueueCapacityPeriodically()
 	for _, mbr := range t.members {
 		mbr.start()
 	}
@@ -77,7 +77,8 @@ func (t *CollectorMgr) Stop() {
 func (t *CollectorMgr) DistributeFragment(fragMetadata *fragment.Metadata) {
 	membersLen := len(t.members)
 	if membersLen <= 0 {
-		t.monitor.AddTotalDistFragMbrLenLte0Num(1)
+		fragMetadata.Pkt = nil
+		libstats.AddTotalDistributeFragmentFailureNum(1)
 		return
 	}
 	idx := fragMetadata.HashValue % uint32(membersLen)
@@ -85,7 +86,7 @@ func (t *CollectorMgr) DistributeFragment(fragMetadata *fragment.Metadata) {
 	mbr.pushFragment(fragMetadata)
 }
 
-func (t *CollectorMgr) checkCompletePktQueuePeriodically() {
+func (t *CollectorMgr) checkCompletePktQueueCapacityPeriodically() {
 	for {
 		if t.status != definition.StartedStatus {
 			break
@@ -101,8 +102,8 @@ func (t *CollectorMgr) checkCompletePktQueuePeriodically() {
 		}
 
 		for _, compPkt := range t.compPktQueue.SafetyPopValues(releaseCount * 2) {
-			//compPkt.(*definition.CompletePacket).Pkt.(gopacket.Packet).NetworkLayer()
 			compPkt.(*definition.CompletePacket).Pkt = nil
+			libstats.AddTotalReleaseCompletePktNum(1)
 		}
 	}
 }
@@ -122,5 +123,6 @@ func (t *CollectorMgr) PopCompletePackets(count int) ([]*definition.CompletePack
 		retPktList = append(retPktList, val.(*definition.CompletePacket))
 	}
 
+	libstats.AddTotalPopCompletePktNum(uint64(len(pktValues)))
 	return retPktList, nil
 }

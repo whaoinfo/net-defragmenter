@@ -3,17 +3,16 @@ package layerfilter
 import (
 	"errors"
 	"github.com/whaoinfo/net-defragmenter/definition"
-	"github.com/whaoinfo/net-defragmenter/monition"
+	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 )
 
 type Filter struct {
-	monitor              *monition.Monitor
 	pickFragTypeSet      map[definition.FragmentType]bool
 	totalFilterPassedNum uint64
 }
 
-func NewFilter(pickFragTypes []definition.FragmentType, monitor *monition.Monitor) (*Filter, error) {
+func NewFilter(pickFragTypes []definition.FragmentType) (*Filter, error) {
 	pickFragTypeSet := make(map[definition.FragmentType]bool)
 	for _, fragTpy := range pickFragTypes {
 		if fragTpy <= definition.InvalidFragType || fragTpy >= definition.MaxInvalidFragType {
@@ -26,38 +25,38 @@ func NewFilter(pickFragTypes []definition.FragmentType, monitor *monition.Monito
 		return nil, errors.New("no valid pick fragment type")
 	}
 
-	return &Filter{monitor: monitor, pickFragTypeSet: pickFragTypeSet}, nil
+	return &Filter{pickFragTypeSet: pickFragTypeSet}, nil
 }
 
-func (t *Filter) ParseAndFilterPacket(pktBuf []byte) (bool, definition.FragmentType, error) {
+func (t *Filter) ParseAndFilterPacket(pktBuf []byte) (definition.FragmentType, uint32, error) {
 	ethType, ethPayload, parseEthErr := parseLinkLayer(pktBuf)
 	if parseEthErr != nil {
-		t.monitor.AddTotalFilterLinkLayerErrNum(1)
-		return false, definition.InvalidFragType, parseEthErr
+		libstats.AddTotalFilterLinkLayerErrNum(1)
+		return definition.InvalidFragType, 0, parseEthErr
 	}
 
-	ipFragType, ipProto, ipPayload, ipLayerErr := parseNetWorkerLayer(ethType, ethPayload)
+	ipFragType, identifier, ipProto, ipPayload, ipLayerErr := parseNetWorkerLayer(ethType, ethPayload)
 	if ipLayerErr != nil {
-		t.monitor.AddTotalFilterNetLayerErrNum(1)
-		return false, definition.InvalidFragType, ipLayerErr
+		return definition.InvalidFragType, 0, ipLayerErr
 	}
 
 	if t.pickFragTypeSet[ipFragType] {
-		return true, ipFragType, nil
+		return ipFragType, identifier, nil
 	}
 
+	libstats.AddTotalPickFragTypeNotExistsNum(1)
 	// Application layer not currently supported
 	if true {
-		return true, definition.InvalidFragType, nil
+		return definition.InvalidFragType, 0, nil
 	}
 
 	appFragType, appParseErr := parseApplicationLayer(ipProto, ipPayload)
 	if appParseErr != nil {
-		t.monitor.AddTotalFilterAppLayerErrNum(1)
-		return false, definition.InvalidFragType, appParseErr
+		libstats.AddTotalFilterAppLayerErrNum(1)
+		return definition.InvalidFragType, 0, appParseErr
 	}
 
-	return true, appFragType, nil
+	return appFragType, 0, nil
 }
 
 func (t *Filter) AddTotalFilterPassedNum() uint64 {
