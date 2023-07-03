@@ -41,6 +41,7 @@ func (t *Filter) ParseAndFilterPacket(pktBuf []byte) (definition.FragmentType, u
 	}
 
 	if t.pickFragTypeSet[ipFragType] {
+		libstats.AddTotalFilterPassedNum(1)
 		return ipFragType, identifier, nil
 	}
 

@@ -66,7 +66,7 @@ func (t *IPV6Handler) ParseLayer(buf []byte, reply *definition.ReplyParseLayerPa
 }
 
 func (t *IPV6Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) (error, definition.ErrResultType) {
-	pktLayers := fragMetadata.Pkt.Layers()
+	pktLayers := pkt.Layers()
 	if len(pktLayers) <= IPV6FragLayerIdx {
 		return errors.New("layers less than 3"), definition.ErrResultNoIPV6FragLayer
 	}

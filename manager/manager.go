@@ -1,4 +1,4 @@
-package net_defragmenter
+package manager
 
 import (
 	"errors"

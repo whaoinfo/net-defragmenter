@@ -45,7 +45,7 @@ func parseNetWorkerLayer(ethType layers.EthernetType, payload []byte) (retFragTy
 		return
 	}
 
-	//retIdentifier = reply.Identifier
+	retIdentifier = reply.Identifier
 	retFragType = mappingFragType
 	return
 }

@@ -35,7 +35,8 @@ func (t *AdapterRecord) close() {
 }
 
 func (t *AdapterRecord) release() {
-
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
 }
 
 func (t *AdapterRecord) associatePcapBuf(fragGroup uint32, timestamp time.Time, ifIndex int) {
