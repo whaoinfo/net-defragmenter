@@ -146,8 +146,8 @@ func (t *DeFragmentAdapter) UnregisterInstance(id AdapterRecordIdType) {
 }
 
 func (t *DeFragmentAdapter) CheckAndDeliverPacket(id AdapterRecordIdType, timestamp time.Time, ifIndex int, buf []byte) bool {
-	log.Printf("[debug][CheckAndDeliverPacket], id=%v, timestamp=%v, ifIndex=%v, bufLen=%d\n",
-		id, timestamp, ifIndex, len(buf))
+	//log.Printf("[debug][CheckAndDeliverPacket], id=%v, timestamp=%v, ifIndex=%v, bufLen=%d\n",
+	//	id, timestamp, ifIndex, len(buf))
 
 	t.rwMutex.RLock()
 	record := t.recordMap[id]

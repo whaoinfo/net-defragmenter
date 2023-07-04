@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime"
 	"time"
 )
 
@@ -21,13 +22,14 @@ var (
 	IPv4Frag3 = []byte{244, 189, 158, 141, 27, 247, 72, 77, 126, 191, 129, 114, 8, 0, 69, 0, 2, 111, 32, 218, 1, 64, 64, 17, 54, 143, 192, 168, 157, 77, 192, 168, 1, 55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 )
 
-type adapterInstance struct {
+type simulationInstance struct {
 	recordId fragadapter.AdapterRecordIdType
 }
 
-func (t *adapterInstance) ReassemblyCompletedCallback(timestamp time.Time, ifIndex int, buf []byte) {
-	log.Printf("ReassemblyCompletedCallback, timestamp=%v, ifIndex=%v, bufLen=%d\n",
-		timestamp.String(), ifIndex, len(buf))
+func (t *simulationInstance) ReassemblyCompletedCallback(timestamp time.Time, ifIndex int, buf []byte) {
+	//log.Printf("ReassemblyCompletedCallback, timestamp=%v, ifIndex=%v, bufLen=%d\n",
+	//	timestamp.String(), ifIndex, len(buf))
+	// 模拟的
 }
 
 func startMonitor() error {
@@ -35,6 +37,28 @@ func startMonitor() error {
 	mux.HandleFunc("/stats", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		stats := libstats.GetStats()
+		d, _ := json.Marshal(stats)
+		_, writeErr := io.WriteString(writer, string(d))
+		if writeErr != nil {
+			log.Printf("io.WriteString failed, %v\n", writeErr)
+		}
+	})
+
+	mux.HandleFunc("/memstats", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		stats := libstats.CollectMemoryStatus()
+		d, _ := json.Marshal(stats)
+		_, writeErr := io.WriteString(writer, string(d))
+		if writeErr != nil {
+			log.Printf("io.WriteString failed, %v\n", writeErr)
+		}
+	})
+
+	mux.HandleFunc("/gc", func(writer http.ResponseWriter, request *http.Request) {
+		runtime.GC()
+
+		writer.Header().Set("Content-Type", "application/json")
+		stats := libstats.CollectMemoryStatus()
 		d, _ := json.Marshal(stats)
 		_, writeErr := io.WriteString(writer, string(d))
 		if writeErr != nil {
@@ -78,9 +102,9 @@ func LaunchBasicDemo() {
 
 	fragadapter.GetAdapterInstance().Start()
 
-	inst1 := &adapterInstance{}
+	inst1 := &simulationInstance{}
 	inst1.recordId = fragadapter.GetAdapterInstance().RegisterInstance(inst1)
-	inst2 := &adapterInstance{}
+	inst2 := &simulationInstance{}
 	inst2.recordId = fragadapter.GetAdapterInstance().RegisterInstance(inst2)
 
 	tp := time.Now()
