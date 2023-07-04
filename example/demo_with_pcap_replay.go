@@ -32,6 +32,10 @@ func printStats() {
 }
 
 func LaunchDemoWithPcapReply(pcapFilePath string) {
+	availableNumCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(availableNumCPU)
+	log.Printf("The current number of logical CPUs available for the process is %d\n", availableNumCPU)
+
 	log.Println("Launch demo with replay pcap function")
 	printMemoryStatus("Memory State")
 	fmt.Println()
@@ -50,12 +54,12 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 	newAdapterErr := fragadapter.InitializeAdapterInstance(func() (fragadapter.IDeFragmentLib, error) {
 		opt := definition.NewOption(func(opt *definition.Option) {
 			opt.PickFragmentTypes = []definition.FragmentType{definition.IPV4FragType, definition.IPV6FragType}
-			opt.ClassifierOption.MaxClassifiersNum = 10
+			opt.ClassifierOption.MaxClassifiersNum = 60
 
-			opt.CollectorOption.MaxCollectorsNum = 10
-			opt.CollectorOption.MaxChannelCap = 200
+			opt.CollectorOption.MaxCollectorsNum = 30
+			opt.CollectorOption.MaxChannelCap = 2000
 			opt.CollectorOption.TickerInterval = 200
-			opt.CollectorOption.MaxCompPktQueueLen = 200
+			opt.CollectorOption.MaxCompPktQueueLen = 100000
 		})
 
 		libstats.EnableStats(true)
@@ -122,8 +126,9 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 	printMemoryStatus("Memory State")
 	fmt.Println()
 
-	log.Println("Waiting 3 seconds")
-	time.Sleep(time.Second * 3)
+	waiteSec := 30
+	log.Printf("Waiting %d seconds\n", waiteSec)
+	time.Sleep(time.Second * time.Duration(waiteSec))
 	printMemoryStatus("Memory State")
 	fmt.Println()
 
@@ -139,17 +144,36 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 	log.Println("Canceled the registration of these simulation instances")
 	printMemoryStatus("Memory State")
 	fmt.Println()
-
-	log.Println("Waiting 3 seconds")
-	time.Sleep(time.Second * 3)
-	printMemoryStatus("Memory State")
+	waiteSec = 5
+	log.Printf("Waiting %d seconds\n", waiteSec)
+	time.Sleep(time.Second * time.Duration(waiteSec))
 	fmt.Println()
 
 	log.Println("Start reclaiming memory")
 	runtime.GC()
 	log.Println("Memory reclamation completed")
+	fmt.Println()
+
+	waiteSec = 3
+	log.Printf("Waiting %d seconds\n", waiteSec)
+	time.Sleep(time.Second * time.Duration(waiteSec))
+	fmt.Println()
+
+	log.Println("Start reclaiming memory")
+	runtime.GC()
+	log.Println("Memory reclamation completed")
+	fmt.Println()
+
+	waiteSec = 3
+	log.Printf("Waiting %d seconds\n", waiteSec)
+	time.Sleep(time.Second * time.Duration(waiteSec))
+	fmt.Println()
+
 	printMemoryStatus("Memory State")
 	fmt.Println()
+
+	//apInst := fragadapter.GetAdapterInstance()
+	//fmt.Println(apInst)
 	printStats()
 	fmt.Println()
 	log.Println("Demo completed")

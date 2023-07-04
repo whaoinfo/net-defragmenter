@@ -23,6 +23,7 @@ type CollectionStats struct {
 	ReassemblyErrStats LayerPktErrStats
 
 	TotalNewFragSetNum                 uint64
+	TotalDelFragSetNotExistNum         uint64
 	TotalReleaseFragSetThReassemblyNum uint64
 	TotalReleaseFragSetThExpiredNum    uint64
 
@@ -37,6 +38,13 @@ func AddTotalNewFragmentSetNum(delta uint64) {
 		return
 	}
 	atomic.AddUint64(&mgr.Collection.TotalNewFragSetNum, delta)
+}
+
+func AddTotalDelFragSetNotExistNum(delta uint64) {
+	if !mgr.Enabled {
+		return
+	}
+	atomic.AddUint64(&mgr.Collection.TotalDelFragSetNotExistNum, delta)
 }
 
 func AddTotalReleaseFragSetThReassemblyNum(delta uint64) {

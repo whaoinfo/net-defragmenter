@@ -125,6 +125,12 @@ func (t *Collector) checkAndReassembly(fragSet *fragment.Set, fragMetadata *frag
 		return nil
 	}
 
+	if _, exist := t.fragSetMap[fragSet.GetID()]; exist {
+		delete(t.fragSetMap, fragSet.GetID())
+	} else {
+		libstats.AddTotalDelFragSetNotExistNum(1)
+	}
+
 	fragListLen := fragSet.GetFragmentListLen()
 	defer func() {
 		fragSet.Release()

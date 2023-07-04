@@ -37,6 +37,18 @@ func (t *AdapterRecord) close() {
 func (t *AdapterRecord) release() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
+	mapLen := len(t.fragGroupInfoMap)
+	if mapLen <= 0 {
+		return
+	}
+
+	keys := make([]uint32, 0, mapLen)
+	for key := range t.fragGroupInfoMap {
+		keys = append(keys, key)
+	}
+	for _, key := range keys {
+		delete(t.fragGroupInfoMap, key)
+	}
 }
 
 func (t *AdapterRecord) associatePcapBuf(fragGroup uint32, timestamp time.Time, ifIndex int) {
@@ -63,12 +75,14 @@ func (t *AdapterRecord) reassemblyPcapBuf(comPkt *definition.CompletePacket) {
 	t.mutex.Unlock()
 
 	if info == nil {
+		comPkt.Pkt = nil
 		log.Printf("[warning][reassemblyPcapBuf] The info with fragGroup %v dose not exists\n", fragGroup)
 		return
 	}
 
 	pkt := comPkt.GetPacket()
 	pktData := pkt.Data()
+	comPkt.Pkt = nil
 
 	t.inst.ReassemblyCompletedCallback(info.Timestamp, info.IfIndex, pktData)
 }

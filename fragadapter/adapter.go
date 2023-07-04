@@ -21,7 +21,7 @@ const (
 )
 
 const (
-	maxPullCompletePacketsNum = 100
+	maxPullCompletePacketsNum = 1000
 	popComPktInterval         = time.Second * time.Duration(2)
 )
 
