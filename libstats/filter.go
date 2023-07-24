@@ -1,7 +1,7 @@
 package libstats
 
 import (
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"sync/atomic"
 )
 
@@ -61,7 +61,7 @@ func AddTotalFilterPassedNum(delta uint64) {
 	atomic.AddUint64(&mgr.Filter.TotalFilterPassedNum, delta)
 }
 
-func AddTotalFilterErrStatsNum(delta uint64, errResultType definition.ErrResultType) {
+func AddTotalFilterErrStatsNum(delta uint64, errResultType def.ErrResultType) {
 	if !mgr.Enabled {
 		return
 	}

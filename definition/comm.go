@@ -31,3 +31,7 @@ const (
 	//ErrResultTypeCollect
 	//ErrResultTypeReassembly
 )
+
+const (
+	ResultPacketProcessStepErr uint8 = iota
+)

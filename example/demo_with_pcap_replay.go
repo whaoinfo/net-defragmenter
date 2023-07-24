@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/fragadapter"
 	"github.com/whaoinfo/net-defragmenter/libstats"
 	"github.com/whaoinfo/net-defragmenter/manager"
@@ -52,14 +52,13 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 
 	log.Println("Start initializing adapter instance")
 	newAdapterErr := fragadapter.InitializeAdapterInstance(func() (fragadapter.IDeFragmentLib, error) {
-		opt := definition.NewOption(func(opt *definition.Option) {
-			opt.PickFragmentTypes = []definition.FragmentType{definition.IPV4FragType, definition.IPV6FragType}
+		opt := def.NewOption(func(opt *def.Option) {
+			opt.PickFragmentTypes = []def.FragmentType{def.IPV4FragType, def.IPV6FragType}
 			opt.ClassifierOption.MaxClassifiersNum = 60
 
 			opt.CollectorOption.MaxCollectorsNum = 30
 			opt.CollectorOption.MaxChannelCap = 2000
-			opt.CollectorOption.TickerInterval = 200
-			opt.CollectorOption.MaxCompPktQueueLen = 100000
+			opt.CollectorOption.MaxFullPktQueueLen = 100000
 		})
 
 		libstats.EnableStats(true)
@@ -113,7 +112,7 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 		pktData := packet.Data()
 		totalPktNum += 1
 		totalPktSize += len(pktData)
-		fragadapter.GetAdapterInstance().CheckAndDeliverPacket(inst1.recordId, tp, ifIdx, pktData)
+		fragadapter.GetAdapterInstance().AsyncProcessPacket(inst1.recordId, tp, ifIdx, pktData)
 	}
 	log.Printf("PCAP file replay completed, The total number of replay packets is %d, The total size of the replay packets is %d bytes\n",
 		totalPktNum, totalPktSize)

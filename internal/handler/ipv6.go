@@ -6,178 +6,104 @@ import (
 	"errors"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/whaoinfo/net-defragmenter/definition"
-	"github.com/whaoinfo/net-defragmenter/internal/fragment"
-)
-
-const (
-	IPVersionLen                 = 1
-	IPV6TrafficClassFlowLabelLen = 3
-	IPV6PayloadLen               = 2
-	IPV6NextHeaderLen            = 1
-	IPV6HopLimitLen              = 1
-	IPV6SrcAddrLen               = 16
-	IPV6DstAddrLen               = 16
-	IPV6HdrLen                   = IPVersionLen + IPV6TrafficClassFlowLabelLen + IPV6PayloadLen + IPV6NextHeaderLen +
-		IPV6HopLimitLen + IPV6SrcAddrLen + IPV6DstAddrLen
-	IPV6FragmentHdr                 = 8
-	IPV6FragHdrIdentificationOffset = 4
-
-	IPV6FragLayerIdx = 2
-
-	FragOffsetMulNum = 8
-)
-
-var (
-	defaultSerializeOpts = &gopacket.SerializeOptions{
-		ComputeChecksums: true,
-	}
+	def "github.com/whaoinfo/net-defragmenter/definition"
+	"github.com/whaoinfo/net-defragmenter/internal/common"
 )
 
 type IPV6Handler struct{}
 
-func (t *IPV6Handler) ParseLayer(buf []byte, reply *definition.ReplyParseLayerParameters) (retErr error, retErrType definition.ErrResultType) {
-	bufLen := len(buf)
-	if bufLen <= IPV6HdrLen {
-		retErr = errors.New("unable to parse IPV6 package, bufLen <= IPV6HdrLen")
-		retErrType = definition.ErrResultIPV6HdrLenInsufficient
+func (t *IPV6Handler) FastDetect(detectInfo *def.DetectionInfo) (retErr error, retErrType def.ErrResultType) {
+	if len(detectInfo.EthPayload) <= def.IPV6HdrLen {
+		retErr = errors.New("unable to parse IPV6 package, len(detectInfo.EthPayload) <= IPV6HdrLen")
+		retErrType = def.ErrResultIPV6HdrLenInsufficient
 		return
 	}
 
-	// Offset to next header
-	buf = buf[IPVersionLen+IPV6TrafficClassFlowLabelLen+IPV6PayloadLen:]
-	reply.Proto = layers.IPProtocol(buf[0])
-	reply.IsFragType = reply.Proto == layers.IPProtocolIPv6Fragment
-	payload := buf[IPV6NextHeaderLen+IPV6HopLimitLen+IPV6SrcAddrLen+IPV6DstAddrLen:]
-	if !reply.IsFragType {
+	buf := detectInfo.EthPayload
+	buf = buf[def.IPVersionLen+def.IPV6TrafficClassFlowLabelLen+def.IPV6PayloadLen:]
+	if layers.IPProtocol(buf[0]) != layers.IPProtocolIPv6Fragment {
 		return
 	}
 
-	if len(payload) <= IPV6FragmentHdr {
+	detectInfo.FragType = def.IPV6FragType
+
+	buf = buf[def.IPV6NextHeaderLen+def.IPV6HopLimitLen:]
+	detectInfo.SrcIP = buf[:def.IPV6SrcAddrLen]
+	buf = buf[def.IPV6SrcAddrLen:]
+
+	detectInfo.DstIP = buf[:def.IPV6DstAddrLen]
+	buf = buf[def.IPV6DstAddrLen:]
+
+	if len(buf) <= def.IPV6FragmentHdrLen {
 		retErr = errors.New("unable to parse IPV6 fragment header, len(retPayload) <= IPV6FragmentHdr")
-		retErrType = definition.ErrResultIPV6FragHdrLenInsufficient
+		retErrType = def.ErrResultIPV6FragHdrLenInsufficient
 		return
 	}
-	fragmentHeader := payload[:IPV6FragmentHdr]
-	identifierBytes := fragmentHeader[IPV6FragHdrIdentificationOffset:]
-	reply.Identifier = binary.BigEndian.Uint32(identifierBytes)
+
+	fragHdrBuf := buf[:def.IPV6FragmentHdrLen]
+	detectInfo.IPProtocol = layers.IPProtocol(fragHdrBuf[0])
+	fragHdrBuf = fragHdrBuf[def.IPV6FragmentNextHeaderLen+def.IPV6FragmentReservedOctetLen:]
+	detectInfo.FragOffset = binary.BigEndian.Uint16(fragHdrBuf) >> 3
+	detectInfo.MoreFrags = (fragHdrBuf[1] & 0x1) != 0
+
+	fragHdrBuf = fragHdrBuf[def.IPV6FlagsFlagsLen:]
+	detectInfo.Identification = binary.BigEndian.Uint32(fragHdrBuf)
+	detectInfo.IPPayload = buf[def.IPV6FragmentHdrLen:]
 
 	return
 }
 
-func (t *IPV6Handler) Classify(fragMetadata *fragment.Metadata, pkt gopacket.Packet) (error, definition.ErrResultType) {
-	pktLayers := pkt.Layers()
-	if len(pktLayers) <= IPV6FragLayerIdx {
-		return errors.New("layers less than 3"), definition.ErrResultNoIPV6FragLayer
-	}
-	frag, convOk := pkt.Layers()[IPV6FragLayerIdx].(*layers.IPv6Fragment)
-	if !convOk {
-		return errors.New("layer3 is not an IPv4 Fragment"), definition.ErrResultConvIPv6Frag
-	}
-
-	netLayer := pkt.NetworkLayer()
-	if netLayer == nil {
-		return errors.New("layer3 is a nil pointer"), definition.ErrResultIPV6NetworkLayerNil
-	}
-
-	fragMetadata.FragGroup = frag.Identification
-	fragMetadata.FlowHashValue = netLayer.NetworkFlow().FastHash()
-	return nil, definition.NonErrResultType
+func (t *IPV6Handler) Collect(fragElem *common.FragmentElement, fragElemSet *common.FragmentElementSet) (error, def.ErrResultType) {
+	return collectFragmentElement(fragElem, fragElemSet)
 }
 
-func (t *IPV6Handler) Collect(fragMetadata *fragment.Metadata, fragSet *fragment.Set) (error, definition.ErrResultType) {
-	pktLayers := fragMetadata.Pkt.Layers()
-	if len(pktLayers) <= IPV6FragLayerIdx {
-		return errors.New("the layer3 is not an IPv6 Fragment"), definition.ErrResultNoIPV6FragLayer
+func (t *IPV6Handler) Reassembly(fragElemSet *common.FragmentElementSet,
+	sharedLayers *common.SharedLayers) (gopacket.Packet, error, def.ErrResultType) {
+
+	finalElem := fragElemSet.GetFinalElement()
+	payloadLen := fragElemSet.GetAllElementsPayloadLen()
+
+	// layer2
+	sharedLayers.EthFrame.SrcMAC = finalElem.SrcMAC
+	sharedLayers.EthFrame.DstMAC = finalElem.DstMAC
+	sharedLayers.EthFrame.EthernetType = layers.EthernetTypeIPv6
+
+	// layer3
+	sharedLayers.IPV6.Length = payloadLen
+	sharedLayers.IPV6.NextHeader = finalElem.IPProtocol
+	sharedLayers.IPV6.SrcIP = finalElem.SrcIP
+	sharedLayers.IPV6.DstIP = finalElem.DstIP
+
+	fullPktBuff := sharedLayers.FullIPV6Buff
+	if err := gopacket.SerializeLayers(fullPktBuff, defaultSerializeOptions,
+		&sharedLayers.EthFrame, &sharedLayers.IPV6); err != nil {
+		return nil, err, def.ErrResultIPv4Serialize
 	}
 
-	frag, convOk := fragMetadata.Pkt.Layers()[IPV6FragLayerIdx].(*layers.IPv6Fragment)
-	if !convOk {
-		return errors.New("the layer3 is not an IPv6 Fragment"), definition.ErrResultConvIPv6Frag
+	// layer4
+	freeLen := len(fullPktBuff.Bytes()) - def.EthIPV6HdrLen
+	_, appendErr := fullPktBuff.AppendBytes(int(payloadLen) - freeLen)
+	if appendErr != nil {
+		return nil, appendErr, def.ErrResultIPv4Serialize
 	}
 
-	fragOffset := frag.FragmentOffset * FragOffsetMulNum
-	if fragOffset >= fragSet.GetHighest() {
-		fragSet.PushBack(frag)
-	} else {
-		fragSet.IterElements(func(elem *list.Element) bool {
-			elemFrag, _ := elem.Value.(*layers.IPv6Fragment)
-			if elemFrag.FragmentOffset == frag.FragmentOffset {
-				// todo
-				return false
-			}
-			if elemFrag.FragmentOffset > frag.FragmentOffset {
-				fragSet.InsertBefore(frag, elem)
-				return false
-			}
-			return true
-		})
-	}
-
-	fragLength := uint16(len(frag.Payload))
-	if fragSet.GetHighest() < fragOffset+fragLength {
-		fragSet.SetHighest(fragOffset + fragLength)
-	}
-
-	fragSet.AddCurrentLen(fragLength)
-	if !fragSet.CheckFinalMetadataExists() {
-		fragSet.SetNextProtocol(frag.NextHeader)
-	}
-
-	if !frag.MoreFragments {
-		fragSet.SetFinalMetadata(fragMetadata)
-	}
-
-	return nil, definition.NonErrResultType
-}
-
-func (t *IPV6Handler) Reassembly(fragSet *fragment.Set) (gopacket.Packet, error, definition.ErrResultType) {
-	var l3Payload []byte
-	fragSet.IterElements(func(elem *list.Element) bool {
-		frag, ok := elem.Value.(*layers.IPv6Fragment)
-		if !ok {
+	payloadSpace := fullPktBuff.Bytes()[def.EthIPV6HdrLen:]
+	fragElemSet.IterElementList(func(elem *list.Element) bool {
+		fragElem := elem.Value.(*common.FragmentElement)
+		fragPayloadLen := fragElem.PayloadBuf.Len()
+		if fragPayloadLen <= 0 {
 			// todo
 			return true
 		}
-		l3Payload = append(l3Payload, frag.Payload...)
+
+		copy(payloadSpace, fragElem.PayloadBuf.Bytes())
+		payloadSpace = payloadSpace[fragPayloadLen:]
 		return true
 	})
 
-	finalMetadata := fragSet.GetFinalMetadata()
-	finalFragment := finalMetadata.Pkt.Layers()[2].(*layers.IPv6Fragment)
-	l2Content := finalMetadata.Pkt.LinkLayer().LayerContents()
-	l3Layer := finalMetadata.Pkt.Layers()[1].(*layers.IPv6)
-
-	newIp := &layers.IPv6{
-		Version:      l3Layer.Version,
-		TrafficClass: l3Layer.TrafficClass,
-		FlowLabel:    l3Layer.FlowLabel,
-		Length:       uint16(len(l3Payload)),
-		NextHeader:   finalFragment.NextHeader,
-		HopLimit:     l3Layer.HopLimit,
-		SrcIP:        l3Layer.SrcIP,
-		DstIP:        l3Layer.DstIP,
-	}
-	//newIp.SrcIP.UnmarshalText([]byte(l3Layer.SrcIP.String()))
-	//newIp.DstIP.UnmarshalText([]byte(l3Layer.DstIP.String()))
-	defer func() {
-		newIp.SrcIP = nil
-		newIp.DstIP = nil
-	}()
-
-	buf := gopacket.NewSerializeBuffer()
-	if err := newIp.SerializeTo(buf, *defaultSerializeOpts); err != nil {
-		return nil, err, definition.ErrResultIPv6Serialize
-	}
-
-	newPktBuf := make([]byte, len(l2Content)+len(buf.Bytes())+len(l3Payload))
-	copy(newPktBuf, l2Content)
-	copy(newPktBuf[len(l2Content):], buf.Bytes())
-	copy(newPktBuf[len(l2Content)+len(buf.Bytes()):], l3Payload)
-
-	retPkt := gopacket.NewPacket(newPktBuf, layers.LinkTypeEthernet, gopacket.Default)
+	retPkt := gopacket.NewPacket(fullPktBuff.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 	if retPkt.ErrorLayer() != nil {
-		return nil, retPkt.ErrorLayer().Error(), definition.ErrResultTypeIPV6NewPacket
+		return nil, retPkt.ErrorLayer().Error(), def.ErrResultIPV4NewPacket
 	}
-	return retPkt, nil, definition.NonErrResultType
+	return retPkt, nil, def.NonErrResultType
 }

@@ -3,15 +3,14 @@ package manager
 import (
 	"errors"
 	"fmt"
-	"github.com/whaoinfo/net-defragmenter/definition"
-	"github.com/whaoinfo/net-defragmenter/internal/classification"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/collection"
-	"github.com/whaoinfo/net-defragmenter/internal/layerfilter"
+	"github.com/whaoinfo/net-defragmenter/internal/detection"
 	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 )
 
-func NewManager(opt *definition.Option) (*Manager, error) {
+func NewManager(opt *def.Option) (*Manager, error) {
 	// Check the config
 	if opt == nil {
 		return nil, errors.New("opt is a nil pointer")
@@ -27,17 +26,15 @@ func NewManager(opt *definition.Option) (*Manager, error) {
 }
 
 type Manager struct {
-	status        int32
-	filter        *layerfilter.Filter
-	classifierMgr *classification.ClassifierMgr
-	collectorMgr  *collection.CollectorMgr
+	status       int32
+	detector     *detection.Detector
+	collectorMgr *collection.CollectorMgr
 }
 
-func (t *Manager) initialize(opt *definition.Option) error {
-
-	filter, newFilterErr := layerfilter.NewFilter(opt.PickFragmentTypes)
-	if newFilterErr != nil {
-		return fmt.Errorf("NewFilter failed, %v", newFilterErr)
+func (t *Manager) initialize(opt *def.Option) error {
+	detector, newDetectorErr := detection.NewDetector(opt.PickFragmentTypes)
+	if newDetectorErr != nil {
+		return fmt.Errorf("NewDetector failed, %v", newDetectorErr)
 	}
 
 	collectorMgr, newCollectorErr := collection.NewCollectorMgr(opt.CollectorOption)
@@ -45,61 +42,56 @@ func (t *Manager) initialize(opt *definition.Option) error {
 		return fmt.Errorf("NewCollectorMgr failed, %v", newCollectorErr)
 	}
 
-	clsMgr, newClsMgrErr := classification.NewClassifierMgr(opt.ClassifierOption, collectorMgr.DistributeFragment)
-	if newClsMgrErr != nil {
-		return fmt.Errorf("NewClassifierMgr failed, %v", newClsMgrErr)
-	}
-
-	t.filter = filter
+	t.detector = detector
 	t.collectorMgr = collectorMgr
-	t.classifierMgr = clsMgr
-	t.status = definition.InitializedStatus
+	t.status = def.InitializedStatus
 
 	return nil
 }
 
 func (t *Manager) Start() {
-	if !atomic.CompareAndSwapInt32(&t.status, definition.InitializedStatus, definition.StartedStatus) {
+	if !atomic.CompareAndSwapInt32(&t.status, def.InitializedStatus, def.StartedStatus) {
 		return
 	}
 
 	t.collectorMgr.Start()
-	t.classifierMgr.Start()
 }
 
 func (t *Manager) Stop() {
-	if !atomic.CompareAndSwapInt32(&t.status, definition.StartedStatus, definition.StoppedStatus) {
+	if !atomic.CompareAndSwapInt32(&t.status, def.StartedStatus, def.StoppedStatus) {
 		return
 	}
 
 	t.collectorMgr.Stop()
-	t.classifierMgr.Stop()
 }
 
-func (t *Manager) DeliverPacket(pktBuf []byte, inIdentifier uint64) (uint32, error) {
-	if t.status != definition.StartedStatus {
-		return 0, fmt.Errorf("manager not started, current status is %v", t.status)
+func (t *Manager) AsyncProcessPacket(pktBuf []byte, inMarkValue uint64, onDetectSuccessful def.OnDetectSuccessfulFunc) error {
+	if t.status != def.StartedStatus {
+		return fmt.Errorf("manager not started, current status is %v", t.status)
 	}
 
 	libstats.AddTotalDeliverPacketPktNum(1)
-	fragType, identifier, filterErr := t.filter.ParseAndFilterPacket(pktBuf)
-	if filterErr != nil {
-		return 0, filterErr
+	var detectInfo def.DetectionInfo
+	if err := t.detector.FastDetect(pktBuf, &detectInfo); err != nil {
+		return err
+	}
+	if detectInfo.FragType == def.InvalidFragType {
+		return nil
 	}
 
-	if fragType <= definition.InvalidFragType || fragType >= definition.MaxInvalidFragType {
-		return 0, nil
+	fragGroupID := detectInfo.GenFragGroupID()
+	if onDetectSuccessful != nil {
+		onDetectSuccessful(fragGroupID)
 	}
 
-	if err := t.classifierMgr.ClassifyFragment(fragType, pktBuf, inIdentifier); err != nil {
-		return 0, err
-	}
+	t.collectorMgr.Collect(fragGroupID, &detectInfo, inMarkValue)
 
-	return identifier, nil
+	detectInfo.Rest()
+	return nil
 }
 
-func (t *Manager) PopCompletePackets(count int) ([]*definition.CompletePacket, error) {
-	if t.status != definition.StartedStatus {
+func (t *Manager) PopFullPackets(count int) ([]*def.FullPacket, error) {
+	if t.status != def.StartedStatus {
 		return nil, fmt.Errorf("manager not started, current status is %v", t.status)
 	}
 
@@ -107,5 +99,5 @@ func (t *Manager) PopCompletePackets(count int) ([]*definition.CompletePacket, e
 		return nil, errors.New("collectorMgr is a nil pointer")
 	}
 
-	return t.collectorMgr.PopCompletePackets(count)
+	return t.collectorMgr.PopFullPackets(count)
 }

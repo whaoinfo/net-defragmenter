@@ -22,8 +22,7 @@ type IPV6WorkerOption struct {
 type CollectorOption struct {
 	MaxCollectorsNum   uint32
 	MaxChannelCap      uint32
-	MaxCompPktQueueLen uint32
-	TickerInterval     time.Duration
+	MaxFullPktQueueLen uint32
 }
 
 type ClassifierOption struct {

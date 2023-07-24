@@ -1,7 +1,7 @@
 package fragadapter
 
 import (
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"log"
 	"sync"
 	"time"
@@ -9,17 +9,17 @@ import (
 
 func NewAdapterRecord(id AdapterRecordIdType, inst IAdapterInstance) *AdapterRecord {
 	return &AdapterRecord{
-		id:               id,
-		inst:             inst,
-		fragGroupInfoMap: make(map[uint32]*FragGroupInfo),
+		id:              id,
+		inst:            inst,
+		capturedInfoMap: make(map[def.FragmentGroupID]*CapturedInfo),
 	}
 }
 
 type AdapterRecord struct {
-	id               AdapterRecordIdType
-	inst             IAdapterInstance
-	fragGroupInfoMap map[uint32]*FragGroupInfo
-	mutex            sync.Mutex
+	id              AdapterRecordIdType
+	inst            IAdapterInstance
+	capturedInfoMap map[def.FragmentGroupID]*CapturedInfo
+	mutex           sync.Mutex
 }
 
 func (t *AdapterRecord) start() {
@@ -37,52 +37,53 @@ func (t *AdapterRecord) close() {
 func (t *AdapterRecord) release() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-	mapLen := len(t.fragGroupInfoMap)
+	mapLen := len(t.capturedInfoMap)
 	if mapLen <= 0 {
 		return
 	}
 
-	keys := make([]uint32, 0, mapLen)
-	for key := range t.fragGroupInfoMap {
+	keys := make([]def.FragmentGroupID, 0, mapLen)
+	for key := range t.capturedInfoMap {
 		keys = append(keys, key)
 	}
 	for _, key := range keys {
-		delete(t.fragGroupInfoMap, key)
+		delete(t.capturedInfoMap, key)
 	}
 }
 
-func (t *AdapterRecord) associatePcapBuf(fragGroup uint32, timestamp time.Time, ifIndex int) {
+func (t *AdapterRecord) associateCapturedInfo(fragGroupID def.FragmentGroupID, timestamp time.Time, ifIndex int) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
-	if _, exist := t.fragGroupInfoMap[fragGroup]; exist {
+	if _, exist := t.capturedInfoMap[fragGroupID]; exist {
 		return
 	}
 
-	t.fragGroupInfoMap[fragGroup] = &FragGroupInfo{
+	t.capturedInfoMap[fragGroupID] = &CapturedInfo{
+		CreateTp:  time.Now().Unix(),
 		Timestamp: time.Unix(int64(timestamp.Second()), int64(timestamp.Nanosecond())),
 		IfIndex:   ifIndex,
 	}
 }
 
-func (t *AdapterRecord) reassemblyPcapBuf(comPkt *definition.CompletePacket) {
-	fragGroup := comPkt.GetFragGroup()
+func (t *AdapterRecord) reassemblyCapturedBuf(fullPkt *def.FullPacket) {
+	fragGroupID := fullPkt.GetFragGroupID()
 	t.mutex.Lock()
-	info, exist := t.fragGroupInfoMap[fragGroup]
+	info, exist := t.capturedInfoMap[fragGroupID]
 	if exist {
-		delete(t.fragGroupInfoMap, fragGroup)
+		delete(t.capturedInfoMap, fragGroupID)
 	}
 	t.mutex.Unlock()
 
 	if info == nil {
-		comPkt.Pkt = nil
-		log.Printf("[warning][reassemblyPcapBuf] The info with fragGroup %v dose not exists\n", fragGroup)
+		fullPkt.Pkt = nil
+		log.Printf("[warning][reassemblyPcapBuf] The info with fragGroup %v dose not exists\n", fragGroupID)
 		return
 	}
 
-	pkt := comPkt.GetPacket()
+	pkt := fullPkt.GetPacket()
 	pktData := pkt.Data()
-	comPkt.Pkt = nil
+	fullPkt.Pkt = nil
 
 	t.inst.ReassemblyCompletedCallback(info.Timestamp, info.IfIndex, pktData)
 }

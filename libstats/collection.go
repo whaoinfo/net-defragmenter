@@ -1,7 +1,7 @@
 package libstats
 
 import (
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"sync/atomic"
 )
 
@@ -15,10 +15,15 @@ type CollectErrStats struct {
 
 type CollectionStats struct {
 	TotalDistributeFragmentFailureNum uint64
-	TotalAcceptFragNum                uint64
-	TotalHandleNilErrNum              uint64
-	CollectErrStats                   LayerPktErrStats
-	TotalAcceptFragSuccessfulNum      uint64
+
+	TotalNewFragmentElementNum      uint64
+	TotalAllocateFragmentElementNum uint64
+	TotalRecycleFragmentElementNum  uint64
+
+	TotalAcceptFragmentElementNum uint64
+	TotalHandleNilErrNum          uint64
+	CollectErrStats               LayerPktErrStats
+	TotalAcceptFragSuccessfulNum  uint64
 
 	ReassemblyErrStats LayerPktErrStats
 
@@ -75,11 +80,32 @@ func AddTotalDistributeFragmentFailureNum(delta uint64) {
 	atomic.AddUint64(&mgr.Collection.TotalDistributeFragmentFailureNum, delta)
 }
 
-func AddTotalAcceptFragNum(delta uint64) {
+func AddTotalNewFragmentElementNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalAcceptFragNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalNewFragmentElementNum, delta)
+}
+
+func AddTotalAllocateFragmentElementNum(delta uint64) {
+	if !mgr.Enabled {
+		return
+	}
+	atomic.AddUint64(&mgr.Collection.TotalAllocateFragmentElementNum, delta)
+}
+
+func AddTotalRecycleFragmentElementNum(delta uint64) {
+	if !mgr.Enabled {
+		return
+	}
+	atomic.AddUint64(&mgr.Collection.TotalRecycleFragmentElementNum, delta)
+}
+
+func AddTotalAcceptFragmentElementNum(delta uint64) {
+	if !mgr.Enabled {
+		return
+	}
+	atomic.AddUint64(&mgr.Collection.TotalAcceptFragmentElementNum, delta)
 }
 
 func AddTotalAcceptFragSuccessfulNum(delta uint64) {
@@ -96,14 +122,14 @@ func AddTotalCollectHandleNilErrNum(delta uint64) {
 	atomic.AddUint64(&mgr.Collection.TotalHandleNilErrNum, delta)
 }
 
-func AddTotalCollectErrStatsNum(delta uint64, errResultType definition.ErrResultType) {
+func AddTotalCollectErrStatsNum(delta uint64, errResultType def.ErrResultType) {
 	if !mgr.Enabled {
 		return
 	}
 	mgr.Collection.CollectErrStats.AddTotalNum(delta, errResultType)
 }
 
-func AddTotalReassemblyErrStatsNum(delta uint64, errResultType definition.ErrResultType) {
+func AddTotalReassemblyErrStatsNum(delta uint64, errResultType def.ErrResultType) {
 	if !mgr.Enabled {
 		return
 	}

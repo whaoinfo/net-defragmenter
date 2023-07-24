@@ -1,16 +1,17 @@
 package fragadapter
 
 import (
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-type FragGroupInfo struct {
+type CapturedInfo struct {
 	Timestamp time.Time
 	IfIndex   int
+	CreateTp  int64
 }
 
 const (
@@ -21,8 +22,8 @@ const (
 )
 
 const (
-	maxPullCompletePacketsNum = 1000
-	popComPktInterval         = time.Second * time.Duration(2)
+	maxPullFullPacketsNum = 5000
+	popPullPktInterval    = time.Second * time.Duration(2)
 )
 
 type AdapterRecordIdType uint64
@@ -36,8 +37,8 @@ type NewDeFragmentLibFunc func() (IDeFragmentLib, error)
 type IDeFragmentLib interface {
 	Start()
 	Stop()
-	DeliverPacket(pktBuf []byte, inIdentifier uint64) (uint32, error)
-	PopCompletePackets(count int) ([]*definition.CompletePacket, error)
+	AsyncProcessPacket(pktBuf []byte, inMarkValue uint64, onDetectSuccessful def.OnDetectSuccessfulFunc) error
+	PopFullPackets(count int) ([]*def.FullPacket, error)
 }
 
 var (
@@ -145,10 +146,9 @@ func (t *DeFragmentAdapter) UnregisterInstance(id AdapterRecordIdType) {
 	delInstRecord.release()
 }
 
-func (t *DeFragmentAdapter) CheckAndDeliverPacket(id AdapterRecordIdType, timestamp time.Time, ifIndex int, buf []byte) bool {
+func (t *DeFragmentAdapter) AsyncProcessPacket(id AdapterRecordIdType, timestamp time.Time, ifIndex int, buf []byte) bool {
 	//log.Printf("[debug][CheckAndDeliverPacket], id=%v, timestamp=%v, ifIndex=%v, bufLen=%d\n",
 	//	id, timestamp, ifIndex, len(buf))
-
 	t.rwMutex.RLock()
 	record := t.recordMap[id]
 	t.rwMutex.RUnlock()
@@ -157,41 +157,49 @@ func (t *DeFragmentAdapter) CheckAndDeliverPacket(id AdapterRecordIdType, timest
 		return false
 	}
 
-	fragGroup, err := t.lib.DeliverPacket(buf, uint64(record.id))
-	if err != nil {
-		log.Printf("[warning][CheckAndDeliverPacket] DeliverPacket error, %v\n", err)
-		return false
-	}
-	if fragGroup <= 0 {
+	//fragGroupID, err := t.lib.AsyncProcessPacket(buf, uint64(record.id), func(clsData *definition.FragmentInfo) {
+	//	record.associateCapturedInfo(fragGroupID, timestamp, ifIndex)
+	//})
+
+	var fragGroupID def.FragmentGroupID
+	var processErr error
+	processErr = t.lib.AsyncProcessPacket(buf, uint64(record.id), func(fragGroupID def.FragmentGroupID) {
+		record.associateCapturedInfo(fragGroupID, timestamp, ifIndex)
+	})
+	if processErr != nil {
+		log.Printf("[warning][CheckAndDeliverPacket] FilterAndDeliverPacket error, %v\n", processErr)
 		return false
 	}
 
-	record.associatePcapBuf(fragGroup, timestamp, ifIndex)
+	if fragGroupID == "" {
+		return false
+	}
+
 	return true
 }
 
 func (t *DeFragmentAdapter) listenReassemblyCompleted() {
 	for {
-		time.Sleep(popComPktInterval)
+		time.Sleep(popPullPktInterval)
 
-		compPktList, popErr := t.lib.PopCompletePackets(maxPullCompletePacketsNum)
+		fullPktList, popErr := t.lib.PopFullPackets(maxPullFullPacketsNum)
 		if popErr != nil {
-			log.Printf("[warning][listenReassemblyCompleted] PopCompletePackets error, %v\n", popErr)
+			log.Printf("[warning][listenReassemblyCompleted] PopFullPackets error, %v\n", popErr)
 			continue
 		}
-		if len(compPktList) <= 0 {
+		if len(fullPktList) <= 0 {
 			continue
 		}
 
-		for _, comPkt := range compPktList {
-			recordId := AdapterRecordIdType(comPkt.GetInIdentifier())
+		for _, pkt := range fullPktList {
+			recordId := AdapterRecordIdType(pkt.GetInMarkValue())
 			record := t.getRecord(recordId)
 			if record == nil {
-				log.Printf("[warning][listenReassemblyCompleted] The record %v dose not exists\n", comPkt.GetInIdentifier())
+				log.Printf("[warning][listenReassemblyCompleted] The record %v dose not exists\n", pkt.GetInMarkValue())
 				continue
 			}
 
-			record.reassemblyPcapBuf(comPkt)
+			record.reassemblyCapturedBuf(pkt)
 		}
 	}
 }

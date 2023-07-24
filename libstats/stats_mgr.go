@@ -14,10 +14,10 @@ var (
 )
 
 type StatsMgr struct {
-	Enabled        bool
-	Filter         FilterStats
-	Classification ClassificationStats
-	Collection     CollectionStats
+	Enabled bool
+	Filter  FilterStats
+	//Classification ClassificationStats
+	Collection CollectionStats
 }
 
 func EnableStats(enableStats bool) {

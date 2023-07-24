@@ -1,7 +1,7 @@
 package libstats
 
 import (
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"sync/atomic"
 )
 
@@ -25,36 +25,34 @@ type LayerPktErrStats struct {
 	TotalUnhandledErrNum uint64
 }
 
-func (t *LayerPktErrStats) AddTotalNum(delta uint64, errResultType definition.ErrResultType) uint64 {
+func (t *LayerPktErrStats) AddTotalNum(delta uint64, errResultType def.ErrResultType) uint64 {
 	var updNum *uint64
 	switch errResultType {
-	case definition.ErrResultTypeNewPacket:
+	case def.ErrResultTypeNewPacket:
 		updNum = &t.TotalNewPacketErrNum
-
-	case definition.ErrResultIPV4NetworkLayerNil:
+	case def.ErrResultIPV4NetworkLayerNil:
 		updNum = &t.TotalIPV4NetWorkerLayerNilNum
-	case definition.ErrResultConvIPV4:
+	case def.ErrResultConvIPV4:
 		updNum = &t.TotalConvIPV4ErrNum
-	case definition.ErrResultIPv4Serialize:
+	case def.ErrResultIPv4Serialize:
 		updNum = &t.TotalSerializeIPV4ErrNum
-	case definition.ErrResultIPV4NewPacket:
+	case def.ErrResultIPV4NewPacket:
 		updNum = &t.TotalIPV4NewPacketErrNum
-	case definition.ErrResultIPV4HdrLenInsufficient:
+	case def.ErrResultIPV4HdrLenInsufficient:
 		updNum = &t.TotalIPV4HdrLenInsufficient
-
-	case definition.ErrResultIPV6NetworkLayerNil:
+	case def.ErrResultIPV6NetworkLayerNil:
 		updNum = &t.TotalIPv6NetWorkerLayerNilNum
-	case definition.ErrResultNoIPV6FragLayer:
+	case def.ErrResultNoIPV6FragLayer:
 		updNum = &t.TotalNoIPV6FragLayerNum
-	case definition.ErrResultConvIPv6Frag:
+	case def.ErrResultConvIPv6Frag:
 		updNum = &t.TotalConvIPV6FragErrNum
-	case definition.ErrResultIPv6Serialize:
+	case def.ErrResultIPv6Serialize:
 		updNum = &t.TotalSerializeIPV6ErrNum
-	case definition.ErrResultTypeIPV6NewPacket:
+	case def.ErrResultTypeIPV6NewPacket:
 		updNum = &t.TotalIPV6NewPacketErrNum
-	case definition.ErrResultIPV6HdrLenInsufficient:
+	case def.ErrResultIPV6HdrLenInsufficient:
 		updNum = &t.TotalIPV6HdrLenInsufficientNum
-	case definition.ErrResultIPV6FragHdrLenInsufficient:
+	case def.ErrResultIPV6FragHdrLenInsufficient:
 		updNum = &t.TotalIPV6FragHdrLenInsufficientNum
 	default:
 		updNum = &t.TotalUnhandledErrNum

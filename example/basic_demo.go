@@ -2,7 +2,7 @@ package example
 
 import (
 	"encoding/json"
-	"github.com/whaoinfo/net-defragmenter/definition"
+	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/fragadapter"
 	"github.com/whaoinfo/net-defragmenter/libstats"
 	"github.com/whaoinfo/net-defragmenter/manager"
@@ -29,7 +29,6 @@ type simulationInstance struct {
 func (t *simulationInstance) ReassemblyCompletedCallback(timestamp time.Time, ifIndex int, buf []byte) {
 	//log.Printf("ReassemblyCompletedCallback, timestamp=%v, ifIndex=%v, bufLen=%d\n",
 	//	timestamp.String(), ifIndex, len(buf))
-	// 模拟的
 }
 
 func startMonitor() error {
@@ -71,14 +70,13 @@ func startMonitor() error {
 
 func LaunchBasicDemo() {
 	newAdapterErr := fragadapter.InitializeAdapterInstance(func() (fragadapter.IDeFragmentLib, error) {
-		opt := definition.NewOption(func(opt *definition.Option) {
-			opt.PickFragmentTypes = []definition.FragmentType{definition.IPV4FragType}
+		opt := def.NewOption(func(opt *def.Option) {
+			opt.PickFragmentTypes = []def.FragmentType{def.IPV4FragType}
 			opt.ClassifierOption.MaxClassifiersNum = 1
 
 			opt.CollectorOption.MaxCollectorsNum = 1
 			opt.CollectorOption.MaxChannelCap = 1
-			opt.CollectorOption.TickerInterval = 100
-			opt.CollectorOption.MaxCompPktQueueLen = 10
+			opt.CollectorOption.MaxFullPktQueueLen = 10
 		})
 
 		libstats.EnableStats(true)
@@ -109,9 +107,9 @@ func LaunchBasicDemo() {
 
 	tp := time.Now()
 	ifIdx := 1
-	fragadapter.GetAdapterInstance().CheckAndDeliverPacket(inst1.recordId, tp, ifIdx, IPv4Frag1)
-	fragadapter.GetAdapterInstance().CheckAndDeliverPacket(inst1.recordId, tp, ifIdx, IPv4Frag2)
-	fragadapter.GetAdapterInstance().CheckAndDeliverPacket(inst1.recordId, tp, ifIdx, IPv4Frag3)
+	fragadapter.GetAdapterInstance().AsyncProcessPacket(inst1.recordId, tp, ifIdx, IPv4Frag1)
+	fragadapter.GetAdapterInstance().AsyncProcessPacket(inst1.recordId, tp, ifIdx, IPv4Frag2)
+	fragadapter.GetAdapterInstance().AsyncProcessPacket(inst1.recordId, tp, ifIdx, IPv4Frag3)
 
 	time.Sleep(time.Second * 5)
 
