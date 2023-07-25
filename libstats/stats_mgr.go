@@ -1,29 +1,23 @@
 package libstats
 
-//func NewStatsMgr(enable bool) *StatsMgr {
-//	return &StatsMgr{
-//		enabled:         enable,
-//		clsStats:        &ClassificationStats{},
-//		collectionStats: &CollectionStats{},
-//		filterStats:     &FilterStats{},
-//	}
-//}
+import (
+	def "github.com/whaoinfo/net-defragmenter/definition"
+)
 
 var (
 	mgr = &StatsMgr{}
 )
 
 type StatsMgr struct {
-	Enabled bool
-	Filter  FilterStats
-	//Classification ClassificationStats
+	Enabled    bool
+	Detection  DetectionStats
 	Collection CollectionStats
 }
 
-func EnableStats(enableStats bool) {
-	mgr.Enabled = enableStats
+func InitStatsMgr(opt def.StatsOption) {
+	mgr.Enabled = opt.Enable
 }
 
-func GetStats() StatsMgr {
+func GetStatsMgr() StatsMgr {
 	return *mgr
 }

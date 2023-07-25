@@ -5,18 +5,17 @@ import (
 	"fmt"
 	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/internal/collection"
+	"github.com/whaoinfo/net-defragmenter/internal/ctrlapi"
 	"github.com/whaoinfo/net-defragmenter/internal/detection"
 	"github.com/whaoinfo/net-defragmenter/libstats"
 	"sync/atomic"
 )
 
 func NewManager(opt *def.Option) (*Manager, error) {
-	// Check the config
 	if opt == nil {
 		return nil, errors.New("opt is a nil pointer")
 	}
 
-	// Create a manager and init it
 	mgr := &Manager{}
 	if err := mgr.initialize(opt); err != nil {
 		return nil, err
@@ -32,6 +31,14 @@ type Manager struct {
 }
 
 func (t *Manager) initialize(opt *def.Option) error {
+	if opt.CtrlApiServerOption.Enable {
+		if err := ctrlapi.InitCtrlApiServer(opt.CtrlApiServerOption.Port); err != nil {
+			return fmt.Errorf("InitCtrlApiServer failed, %v", err)
+		}
+	}
+
+	libstats.InitStatsMgr(opt.StatsOption)
+
 	detector, newDetectorErr := detection.NewDetector(opt.PickFragmentTypes)
 	if newDetectorErr != nil {
 		return fmt.Errorf("NewDetector failed, %v", newDetectorErr)
@@ -70,7 +77,7 @@ func (t *Manager) AsyncProcessPacket(pktBuf []byte, inMarkValue uint64, onDetect
 		return fmt.Errorf("manager not started, current status is %v", t.status)
 	}
 
-	libstats.AddTotalDeliverPacketPktNum(1)
+	libstats.AddTotalReceivedPktNum(1)
 	var detectInfo def.DetectionInfo
 	if err := t.detector.FastDetect(pktBuf, &detectInfo); err != nil {
 		return err

@@ -15,13 +15,13 @@ func newCollector(id, maxListenChanCap uint32, ptrFullPktQueue *linkqueue.LinkQu
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	return &Collector{
-		id:              id,
-		cancelCtx:       cancelCtx,
-		cancelFunc:      cancelFunc,
-		listenChan:      make(chan *common.FragmentElement, maxListenChanCap),
-		fragElemSetMap:  make(map[def.FragmentGroupID]*common.FragmentElementSet),
-		ptrFullPktQueue: ptrFullPktQueue,
-		sharedLayers:    common.NewSharedLayers(),
+		id:               id,
+		cancelCtx:        cancelCtx,
+		cancelFunc:       cancelFunc,
+		listenChan:       make(chan *common.FragmentElement, maxListenChanCap),
+		fragElemGroupMap: make(map[def.FragmentGroupID]*common.FragmentElementGroup),
+		ptrFullPktQueue:  ptrFullPktQueue,
+		sharedLayers:     common.NewSharedLayers(),
 	}
 }
 
@@ -30,10 +30,10 @@ type Collector struct {
 	cancelCtx  context.Context
 	cancelFunc context.CancelFunc
 
-	listenChan      chan *common.FragmentElement
-	fragElemSetMap  map[def.FragmentGroupID]*common.FragmentElementSet
-	ptrFullPktQueue *linkqueue.LinkQueue
-	sharedLayers    *common.SharedLayers
+	listenChan       chan *common.FragmentElement
+	fragElemGroupMap map[def.FragmentGroupID]*common.FragmentElementGroup
+	ptrFullPktQueue  *linkqueue.LinkQueue
+	sharedLayers     *common.SharedLayers
 }
 
 func (t *Collector) start() {
@@ -84,17 +84,17 @@ loopExit:
 
 func (t *Collector) checkFragmentElementSetExpired() {
 	nowTp := time.Now().Unix()
-	var expiredSets []*common.FragmentElementSet
-	for _, fragElemSet := range t.fragElemSetMap {
-		if (nowTp - fragElemSet.GetCreateTimestamp()) > fragSetDurationSec {
-			expiredSets = append(expiredSets, fragElemSet)
+	var expiredGroups []*common.FragmentElementGroup
+	for _, fragElemGroup := range t.fragElemGroupMap {
+		if (nowTp - fragElemGroup.GetCreateTimestamp()) > fragSetDurationSec {
+			expiredGroups = append(expiredGroups, fragElemGroup)
 		}
 	}
 
-	for _, fragElemSet := range expiredSets {
-		delete(t.fragElemSetMap, fragElemSet.GetID())
-		fragElemSet.Release()
-		libstats.AddTotalReleaseFragSetThExpiredNum(1)
+	for _, fragElemGroup := range expiredGroups {
+		delete(t.fragElemGroupMap, fragElemGroup.GetID())
+		fragElemGroup.Release()
+		libstats.AddTotalReleaseFragGroupThExpiredNum(1)
 	}
 }
 
@@ -106,45 +106,45 @@ func (t *Collector) accept(fragElem *common.FragmentElement) error {
 		return fmt.Errorf("handler with fragment type %v dose not exists", fragElem.Type)
 	}
 
-	fragElemSet, exist := t.fragElemSetMap[fragElem.GroupID]
+	fragElemGroup, exist := t.fragElemGroupMap[fragElem.GroupID]
 	if !exist {
-		t.fragElemSetMap[fragElem.GroupID] = common.NewFragmentElementSet(fragElem.GroupID)
-		fragElemSet = t.fragElemSetMap[fragElem.GroupID]
-		libstats.AddTotalNewFragmentSetNum(1)
+		t.fragElemGroupMap[fragElem.GroupID] = common.NewFragmentElementGroup(fragElem.GroupID)
+		fragElemGroup = t.fragElemGroupMap[fragElem.GroupID]
+		libstats.AddTotalNewFragmentGroupNum(1)
 	}
 
-	collectErr, collectErrType := hd.Collect(fragElem, fragElemSet)
+	collectErr, collectErrType := hd.Collect(fragElem, fragElemGroup)
 	if collectErr != nil {
 		libstats.AddTotalCollectErrStatsNum(1, collectErrType)
 		return collectErr
 	}
 
 	libstats.AddTotalAcceptFragSuccessfulNum(1)
-	if err := t.checkAndReassembly(fragElemSet, fragElem, hd); err != nil {
+	if err := t.checkAndReassembly(fragElemGroup, fragElem, hd); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (t *Collector) checkAndReassembly(fragElemSet *common.FragmentElementSet, fragElem *common.FragmentElement, hd handler.IHandler) error {
-	if !fragElemSet.CheckFinalElementExists() || fragElemSet.GetHighest() != fragElemSet.GetCurrentLen() {
+func (t *Collector) checkAndReassembly(fragElemGroup *common.FragmentElementGroup, fragElem *common.FragmentElement, hd handler.IHandler) error {
+	if !fragElemGroup.CheckFinalElementExists() || fragElemGroup.GetHighest() != fragElemGroup.GetCurrentLen() {
 		return nil
 	}
 
-	if _, exist := t.fragElemSetMap[fragElemSet.GetID()]; exist {
-		delete(t.fragElemSetMap, fragElemSet.GetID())
+	if _, exist := t.fragElemGroupMap[fragElemGroup.GetID()]; exist {
+		delete(t.fragElemGroupMap, fragElemGroup.GetID())
 	} else {
-		libstats.AddTotalDelFragSetNotExistNum(1)
+		libstats.AddTotalDelFragGroupNotExistNum(1)
 	}
 
-	fragElemListLen := fragElemSet.GetElementListLen()
+	fragElemListLen := fragElemGroup.GetElementListLen()
 	defer func() {
-		fragElemSet.Release()
-		libstats.AddTotalReleaseFragSetThReassemblyNum(1)
+		fragElemGroup.Release()
+		libstats.AddTotalReleaseFragGroupThReassemblyNum(1)
 	}()
 
-	pkt, reassemblyErr, errType := hd.Reassembly(fragElemSet, t.sharedLayers)
+	pkt, reassemblyErr, errType := hd.Reassembly(fragElemGroup, t.sharedLayers)
 	t.sharedLayers.UpdateReferences()
 
 	if reassemblyErr != nil {
@@ -153,7 +153,7 @@ func (t *Collector) checkAndReassembly(fragElemSet *common.FragmentElementSet, f
 	}
 
 	libstats.AddTotalReassemblyFragNum(uint64(fragElemListLen))
-	libstats.AddTotalPushCompletePktNum(1)
+	libstats.AddTotalPushFullPktNum(1)
 	t.ptrFullPktQueue.SafetyPutValue(&def.FullPacket{
 		InMarkValue: fragElem.InMarkValue,
 		FragGroupID: fragElem.GroupID,

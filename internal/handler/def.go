@@ -8,8 +8,8 @@ import (
 
 type IHandler interface {
 	FastDetect(detectInfo *def.DetectionInfo) (error, def.ErrResultType)
-	Collect(fragElem *common.FragmentElement, fragElemSet *common.FragmentElementSet) (error, def.ErrResultType)
-	Reassembly(fragElemSet *common.FragmentElementSet, sharedLayers *common.SharedLayers) (gopacket.Packet, error, def.ErrResultType)
+	Collect(fragElem *common.FragmentElement, fragElemGroup *common.FragmentElementGroup) (error, def.ErrResultType)
+	Reassembly(fragElemGroup *common.FragmentElementGroup, sharedLayers *common.SharedLayers) (gopacket.Packet, error, def.ErrResultType)
 }
 
 var (

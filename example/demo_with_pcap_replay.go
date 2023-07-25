@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
-	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/fragadapter"
 	"github.com/whaoinfo/net-defragmenter/libstats"
-	"github.com/whaoinfo/net-defragmenter/manager"
 	"log"
 	"runtime"
 	"time"
@@ -23,7 +21,7 @@ func printMemoryStatus(title string) {
 }
 
 func printStats() {
-	stats := libstats.GetStats()
+	stats := libstats.GetStatsMgr()
 	d, _ := json.Marshal(stats)
 	log.Println("=============stats==================")
 	fmt.Println(string(d))
@@ -51,24 +49,7 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 	fmt.Println()
 
 	log.Println("Start initializing adapter instance")
-	newAdapterErr := fragadapter.InitializeAdapterInstance(func() (fragadapter.IDeFragmentLib, error) {
-		opt := def.NewOption(func(opt *def.Option) {
-			opt.PickFragmentTypes = []def.FragmentType{def.IPV4FragType, def.IPV6FragType}
-			opt.ClassifierOption.MaxClassifiersNum = 60
-
-			opt.CollectorOption.MaxCollectorsNum = 30
-			opt.CollectorOption.MaxChannelCap = 2000
-			opt.CollectorOption.MaxFullPktQueueLen = 100000
-		})
-
-		libstats.EnableStats(true)
-
-		lib, newLibErr := manager.NewManager(opt)
-		if newLibErr != nil {
-			return nil, newLibErr
-		}
-		return lib, nil
-	})
+	newAdapterErr := fragadapter.InitializeAdapterInstance()
 	if newAdapterErr != nil {
 		log.Printf("NewDeFragmentAdapter failed, %v\n", newAdapterErr)
 		return
@@ -77,13 +58,6 @@ func LaunchDemoWithPcapReply(pcapFilePath string) {
 	printMemoryStatus("Memory State")
 	fmt.Println()
 
-	log.Println("Start Monitor")
-	go func() {
-		if err := startMonitor(); err != nil {
-			log.Printf("startMonitor failed, %v\n", err)
-		}
-	}()
-	log.Println("Monitor has started")
 	printMemoryStatus("Memory State")
 	fmt.Println()
 

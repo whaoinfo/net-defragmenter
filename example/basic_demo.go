@@ -1,15 +1,8 @@
 package example
 
 import (
-	"encoding/json"
-	def "github.com/whaoinfo/net-defragmenter/definition"
 	"github.com/whaoinfo/net-defragmenter/fragadapter"
-	"github.com/whaoinfo/net-defragmenter/libstats"
-	"github.com/whaoinfo/net-defragmenter/manager"
-	"io"
 	"log"
-	"net/http"
-	"runtime"
 	"time"
 )
 
@@ -31,72 +24,12 @@ func (t *simulationInstance) ReassemblyCompletedCallback(timestamp time.Time, if
 	//	timestamp.String(), ifIndex, len(buf))
 }
 
-func startMonitor() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/stats", func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		stats := libstats.GetStats()
-		d, _ := json.Marshal(stats)
-		_, writeErr := io.WriteString(writer, string(d))
-		if writeErr != nil {
-			log.Printf("io.WriteString failed, %v\n", writeErr)
-		}
-	})
-
-	mux.HandleFunc("/memstats", func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		stats := libstats.CollectMemoryStatus()
-		d, _ := json.Marshal(stats)
-		_, writeErr := io.WriteString(writer, string(d))
-		if writeErr != nil {
-			log.Printf("io.WriteString failed, %v\n", writeErr)
-		}
-	})
-
-	mux.HandleFunc("/gc", func(writer http.ResponseWriter, request *http.Request) {
-		runtime.GC()
-
-		writer.Header().Set("Content-Type", "application/json")
-		stats := libstats.CollectMemoryStatus()
-		d, _ := json.Marshal(stats)
-		_, writeErr := io.WriteString(writer, string(d))
-		if writeErr != nil {
-			log.Printf("io.WriteString failed, %v\n", writeErr)
-		}
-	})
-
-	return http.ListenAndServe("127.0.0.1:8991", mux)
-}
-
 func LaunchBasicDemo() {
-	newAdapterErr := fragadapter.InitializeAdapterInstance(func() (fragadapter.IDeFragmentLib, error) {
-		opt := def.NewOption(func(opt *def.Option) {
-			opt.PickFragmentTypes = []def.FragmentType{def.IPV4FragType}
-			opt.ClassifierOption.MaxClassifiersNum = 1
-
-			opt.CollectorOption.MaxCollectorsNum = 1
-			opt.CollectorOption.MaxChannelCap = 1
-			opt.CollectorOption.MaxFullPktQueueLen = 10
-		})
-
-		libstats.EnableStats(true)
-
-		lib, newLibErr := manager.NewManager(opt)
-		if newLibErr != nil {
-			return nil, newLibErr
-		}
-		return lib, nil
-	})
+	newAdapterErr := fragadapter.InitializeAdapterInstance()
 	if newAdapterErr != nil {
 		log.Printf("NewDeFragmentAdapter failed, %v\n", newAdapterErr)
 		return
 	}
-
-	go func() {
-		if err := startMonitor(); err != nil {
-			log.Printf("startMonitor failed, %v\n", err)
-		}
-	}()
 
 	fragadapter.GetAdapterInstance().Start()
 

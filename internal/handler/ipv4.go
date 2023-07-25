@@ -49,22 +49,20 @@ func (t *IPV4Handler) FastDetect(detectInfo *def.DetectionInfo) (retErr error, r
 	return
 }
 
-func (t *IPV4Handler) Collect(fragElem *common.FragmentElement, fragElemSet *common.FragmentElementSet) (error, def.ErrResultType) {
-	return collectFragmentElement(fragElem, fragElemSet)
+func (t *IPV4Handler) Collect(fragElem *common.FragmentElement, fragElemGroup *common.FragmentElementGroup) (error, def.ErrResultType) {
+	return collectFragmentElement(fragElem, fragElemGroup)
 }
 
-func (t *IPV4Handler) Reassembly(fragElemSet *common.FragmentElementSet,
+func (t *IPV4Handler) Reassembly(fragElemGroup *common.FragmentElementGroup,
 	sharedLayers *common.SharedLayers) (gopacket.Packet, error, def.ErrResultType) {
 
-	finalElem := fragElemSet.GetFinalElement()
-	payloadLen := fragElemSet.GetAllElementsPayloadLen()
+	finalElem := fragElemGroup.GetFinalElement()
+	payloadLen := fragElemGroup.GetAllElementsPayloadLen()
 
-	// layer2
 	sharedLayers.EthFrame.SrcMAC = finalElem.SrcMAC
 	sharedLayers.EthFrame.DstMAC = finalElem.DstMAC
 	sharedLayers.EthFrame.EthernetType = layers.EthernetTypeIPv4
 
-	// layer3
 	sharedLayers.IPV4.Id = uint16(finalElem.Identification)
 	sharedLayers.IPV4.Length = payloadLen
 	sharedLayers.IPV4.Protocol = finalElem.IPProtocol
@@ -74,18 +72,17 @@ func (t *IPV4Handler) Reassembly(fragElemSet *common.FragmentElementSet,
 	fullPktBuff := sharedLayers.FullIPV4Buff
 	if err := gopacket.SerializeLayers(fullPktBuff, defaultSerializeOptions,
 		&sharedLayers.EthFrame, &sharedLayers.IPV4); err != nil {
-		return nil, err, def.ErrResultIPv4Serialize
+		return nil, err, def.ErrResultSerializeLayers
 	}
 
-	// layer4
 	freeLen := len(fullPktBuff.Bytes()) - def.EthIPV4HdrLen
 	_, appendErr := fullPktBuff.AppendBytes(int(payloadLen) - freeLen)
 	if appendErr != nil {
-		return nil, appendErr, def.ErrResultIPv4Serialize
+		return nil, appendErr, def.ErrResultFullPacketBufAppendBytes
 	}
 
 	payloadSpace := fullPktBuff.Bytes()[def.EthIPV4HdrLen:]
-	fragElemSet.IterElementList(func(elem *list.Element) bool {
+	fragElemGroup.IterElementList(func(elem *list.Element) bool {
 		fragElem := elem.Value.(*common.FragmentElement)
 		fragPayloadLen := fragElem.PayloadBuf.Len()
 		if fragPayloadLen <= 0 {
@@ -100,24 +97,24 @@ func (t *IPV4Handler) Reassembly(fragElemSet *common.FragmentElementSet,
 
 	retPkt := gopacket.NewPacket(fullPktBuff.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 	if retPkt.ErrorLayer() != nil {
-		return nil, retPkt.ErrorLayer().Error(), def.ErrResultIPV4NewPacket
+		return nil, retPkt.ErrorLayer().Error(), def.ErrResultTypeNewPacket
 	}
 	return retPkt, nil, def.NonErrResultType
 }
 
-func collectFragmentElement(fragElem *common.FragmentElement, fragElemSet *common.FragmentElementSet) (error, def.ErrResultType) {
+func collectFragmentElement(fragElem *common.FragmentElement, fragElemGroup *common.FragmentElementGroup) (error, def.ErrResultType) {
 	fragOffset := fragElem.FragOffset * def.FragOffsetMulNum
-	if fragOffset >= fragElemSet.GetHighest() {
-		fragElemSet.PushElementToBack(fragElem)
+	if fragOffset >= fragElemGroup.GetHighest() {
+		fragElemGroup.PushElementToBack(fragElem)
 	} else {
-		fragElemSet.IterElementList(func(elem *list.Element) bool {
+		fragElemGroup.IterElementList(func(elem *list.Element) bool {
 			exitElem := elem.Value.(*common.FragmentElement)
 			if exitElem.FragOffset == fragElem.FragOffset {
 				// todo
 				return false
 			}
 			if exitElem.FragOffset > fragElem.FragOffset {
-				fragElemSet.InsertElementToBefore(fragElem, elem)
+				fragElemGroup.InsertElementToBefore(fragElem, elem)
 				return false
 			}
 			return true
@@ -125,15 +122,15 @@ func collectFragmentElement(fragElem *common.FragmentElement, fragElemSet *commo
 	}
 
 	fragLength := uint16(fragElem.PayloadBuf.Len())
-	if fragElemSet.GetHighest() < fragOffset+fragLength {
-		fragElemSet.SetHighest(fragOffset + fragLength)
+	if fragElemGroup.GetHighest() < fragOffset+fragLength {
+		fragElemGroup.SetHighest(fragOffset + fragLength)
 	}
 
-	fragElemSet.AddCurrentLen(fragLength)
+	fragElemGroup.AddCurrentLen(fragLength)
 
 	if !fragElem.MoreFrags {
-		fragElemSet.SetNextProtocol(fragElem.IPProtocol)
-		fragElemSet.SetFinalElement(fragElem)
+		fragElemGroup.SetNextProtocol(fragElem.IPProtocol)
+		fragElemGroup.SetFinalElement(fragElem)
 	}
 
 	return nil, def.NonErrResultType

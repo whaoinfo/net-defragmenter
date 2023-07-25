@@ -106,7 +106,7 @@ func (t *CollectorMgr) checkFullPktQueueCapacityPeriodically() {
 
 		for _, compPkt := range t.fullPktQueue.SafetyPopValues(releaseCount * 2) {
 			compPkt.(*def.FullPacket).Pkt = nil
-			libstats.AddTotalReleaseCompletePktNum(1)
+			libstats.AddTotalReleaseFullPktNum(1)
 		}
 	}
 }
@@ -126,7 +126,7 @@ func (t *CollectorMgr) PopFullPackets(count int) ([]*def.FullPacket, error) {
 		retPktList = append(retPktList, val.(*def.FullPacket))
 	}
 
-	libstats.AddTotalPopCompletePktNum(uint64(len(pktValues)))
+	libstats.AddTotalPopFullPktNum(uint64(len(pktValues)))
 	return retPktList, nil
 }
 

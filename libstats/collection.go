@@ -27,43 +27,43 @@ type CollectionStats struct {
 
 	ReassemblyErrStats LayerPktErrStats
 
-	TotalNewFragSetNum                 uint64
-	TotalDelFragSetNotExistNum         uint64
-	TotalReleaseFragSetThReassemblyNum uint64
-	TotalReleaseFragSetThExpiredNum    uint64
+	TotalNewFragGroupNum                 uint64
+	TotalDelFragGroupNotExistNum         uint64
+	TotalReleaseFragGroupThReassemblyNum uint64
+	TotalReleaseFragGroupThExpiredNum    uint64
 
-	TotalReassemblyFragNum     uint64
-	TotalPushCompletePktNum    uint64
-	TotalPopCompletePktNum     uint64
-	TotalReleaseCompletePktNum uint64
+	TotalReassemblyFragNum uint64
+	TotalPushFullPktNum    uint64
+	TotalPopFullPktNum     uint64
+	TotalReleaseFullPktNum uint64
 }
 
-func AddTotalNewFragmentSetNum(delta uint64) {
+func AddTotalNewFragmentGroupNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalNewFragSetNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalNewFragGroupNum, delta)
 }
 
-func AddTotalDelFragSetNotExistNum(delta uint64) {
+func AddTotalDelFragGroupNotExistNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalDelFragSetNotExistNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalDelFragGroupNotExistNum, delta)
 }
 
-func AddTotalReleaseFragSetThReassemblyNum(delta uint64) {
+func AddTotalReleaseFragGroupThReassemblyNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalReleaseFragSetThReassemblyNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalReleaseFragGroupThReassemblyNum, delta)
 }
 
-func AddTotalReleaseFragSetThExpiredNum(delta uint64) {
+func AddTotalReleaseFragGroupThExpiredNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalReleaseFragSetThExpiredNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalReleaseFragGroupThExpiredNum, delta)
 }
 
 func AddTotalReassemblyFragNum(delta uint64) {
@@ -136,23 +136,23 @@ func AddTotalReassemblyErrStatsNum(delta uint64, errResultType def.ErrResultType
 	mgr.Collection.ReassemblyErrStats.AddTotalNum(delta, errResultType)
 }
 
-func AddTotalPushCompletePktNum(delta uint64) {
+func AddTotalPushFullPktNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalPushCompletePktNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalPushFullPktNum, delta)
 }
 
-func AddTotalReleaseCompletePktNum(delta uint64) {
+func AddTotalReleaseFullPktNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalReleaseCompletePktNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalReleaseFullPktNum, delta)
 }
 
-func AddTotalPopCompletePktNum(delta uint64) {
+func AddTotalPopFullPktNum(delta uint64) {
 	if !mgr.Enabled {
 		return
 	}
-	atomic.AddUint64(&mgr.Collection.TotalPopCompletePktNum, delta)
+	atomic.AddUint64(&mgr.Collection.TotalPopFullPktNum, delta)
 }

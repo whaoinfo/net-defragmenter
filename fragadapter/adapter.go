@@ -2,6 +2,7 @@ package fragadapter
 
 import (
 	def "github.com/whaoinfo/net-defragmenter/definition"
+	"github.com/whaoinfo/net-defragmenter/manager"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -45,12 +46,12 @@ var (
 	adapterInstance *DeFragmentAdapter
 )
 
-func InitializeAdapterInstance(newLibFunc NewDeFragmentLibFunc) error {
+func InitializeAdapterInstance() error {
 	if adapterInstance != nil {
 		return nil
 	}
 
-	inst, newInstErr := NewDeFragmentAdapter(newLibFunc)
+	inst, newInstErr := NewDeFragmentAdapter()
 	if newInstErr != nil {
 		return newInstErr
 	}
@@ -63,8 +64,21 @@ func GetAdapterInstance() *DeFragmentAdapter {
 	return adapterInstance
 }
 
-func NewDeFragmentAdapter(newLibFunc NewDeFragmentLibFunc) (*DeFragmentAdapter, error) {
-	lib, newLibErr := newLibFunc()
+func NewDeFragmentAdapter() (*DeFragmentAdapter, error) {
+	opt := def.NewOption(func(opt *def.Option) {
+		opt.CtrlApiServerOption.Enable = true
+		opt.CtrlApiServerOption.Port = 11793
+
+		opt.StatsOption.Enable = true
+
+		opt.PickFragmentTypes = []def.FragmentType{def.IPV4FragType, def.IPV6FragType}
+
+		opt.CollectorOption.MaxCollectorsNum = 30
+		opt.CollectorOption.MaxChannelCap = 2000
+		opt.CollectorOption.MaxFullPktQueueLen = 10000
+	})
+
+	lib, newLibErr := manager.NewManager(opt)
 	if newLibErr != nil {
 		return nil, newLibErr
 	}
@@ -131,6 +145,7 @@ func (t *DeFragmentAdapter) RegisterInstance(inst IAdapterInstance) (retId Adapt
 	t.incRecordId += 1
 	retId = t.incRecordId
 	t.recordMap[retId] = NewAdapterRecord(retId, inst)
+	log.Printf("Registered a new PCAP instance, RecordId: %v\n", retId)
 
 	return
 }
@@ -144,6 +159,7 @@ func (t *DeFragmentAdapter) UnregisterInstance(id AdapterRecordIdType) {
 	t.rwMutex.Unlock()
 
 	delInstRecord.release()
+	log.Printf("Deregistered a new PCAP instance, RecordId: %v\n", id)
 }
 
 func (t *DeFragmentAdapter) AsyncProcessPacket(id AdapterRecordIdType, timestamp time.Time, ifIndex int, buf []byte) bool {

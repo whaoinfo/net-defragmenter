@@ -29,7 +29,7 @@ func NewDetector(pickFragTypes []def.FragmentType) (*Detector, error) {
 
 func (t *Detector) FastDetect(pktBuf []byte, detectInfo *def.DetectionInfo) error {
 	if err := detectEthernetLayer(pktBuf, detectInfo); err != nil {
-		libstats.AddTotalFilterLinkLayerErrNum(1)
+		libstats.AddTotalDetectLinkLayerErrNum(1)
 		return err
 	}
 	if detectInfo.EthType == layers.EthernetTypeLLC {
@@ -41,7 +41,7 @@ func (t *Detector) FastDetect(pktBuf []byte, detectInfo *def.DetectionInfo) erro
 	}
 
 	if detectInfo.FragType == def.IPV4FragType || detectInfo.FragType == def.IPV6FragType {
-		libstats.AddTotalFilterPassedNum(1)
+		libstats.AddTotalDetectPassedNum(1)
 		return nil
 	}
 
@@ -52,7 +52,7 @@ func (t *Detector) FastDetect(pktBuf []byte, detectInfo *def.DetectionInfo) erro
 	}
 
 	if err := detectApplicationLayer(detectInfo); err != nil {
-		libstats.AddTotalFilterAppLayerErrNum(1)
+		libstats.AddTotalDetectAppLayerErrNum(1)
 		return err
 	}
 

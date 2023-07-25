@@ -54,15 +54,15 @@ func RecycleFragmentElement(elem *FragmentElement) {
 	fragElementObjectPool.Put(elem)
 }
 
-func NewFragmentElementSet(fragGroupID def.FragmentGroupID) *FragmentElementSet {
-	return &FragmentElementSet{
+func NewFragmentElementGroup(fragGroupID def.FragmentGroupID) *FragmentElementGroup {
+	return &FragmentElementGroup{
 		groupID:  fragGroupID,
 		createTp: time.Now().Unix(),
 		elemList: list.New(),
 	}
 }
 
-type FragmentElementSet struct {
+type FragmentElementGroup struct {
 	groupID      def.FragmentGroupID
 	createTp     int64
 	elemList     *list.List
@@ -73,61 +73,61 @@ type FragmentElementSet struct {
 	lastSeen     time.Time
 }
 
-func (t *FragmentElementSet) GetID() def.FragmentGroupID {
+func (t *FragmentElementGroup) GetID() def.FragmentGroupID {
 	return t.groupID
 }
 
-func (t *FragmentElementSet) GetHighest() uint16 {
+func (t *FragmentElementGroup) GetHighest() uint16 {
 	return t.highest
 }
 
-func (t *FragmentElementSet) AddHighest(val uint16) uint16 {
+func (t *FragmentElementGroup) AddHighest(val uint16) uint16 {
 	t.highest += val
 	return t.highest
 }
 
-func (t *FragmentElementSet) SetHighest(val uint16) {
+func (t *FragmentElementGroup) SetHighest(val uint16) {
 	t.highest = val
 }
 
-func (t *FragmentElementSet) GetCurrentLen() uint16 {
+func (t *FragmentElementGroup) GetCurrentLen() uint16 {
 	return t.currentLen
 }
 
-func (t *FragmentElementSet) SetNextProtocol(proto interface{}) {
+func (t *FragmentElementGroup) SetNextProtocol(proto interface{}) {
 	t.nextProtocol = proto
 }
 
-func (t *FragmentElementSet) GetNextProtocol() interface{} {
+func (t *FragmentElementGroup) GetNextProtocol() interface{} {
 	return t.nextProtocol
 }
 
-func (t *FragmentElementSet) AddCurrentLen(val uint16) uint16 {
+func (t *FragmentElementGroup) AddCurrentLen(val uint16) uint16 {
 	t.currentLen += val
 	return t.currentLen
 }
 
-func (t *FragmentElementSet) CheckFinalElementExists() bool {
+func (t *FragmentElementGroup) CheckFinalElementExists() bool {
 	return t.ptrFinalElem != nil
 }
 
-func (t *FragmentElementSet) SetFinalElement(elem *FragmentElement) {
+func (t *FragmentElementGroup) SetFinalElement(elem *FragmentElement) {
 	t.ptrFinalElem = elem
 }
 
-func (t *FragmentElementSet) GetFinalElement() *FragmentElement {
+func (t *FragmentElementGroup) GetFinalElement() *FragmentElement {
 	return t.ptrFinalElem
 }
 
-func (t *FragmentElementSet) PushElementToBack(elem *FragmentElement) {
+func (t *FragmentElementGroup) PushElementToBack(elem *FragmentElement) {
 	t.elemList.PushBack(elem)
 }
 
-func (t *FragmentElementSet) InsertElementToBefore(elem *FragmentElement, mark *list.Element) *list.Element {
+func (t *FragmentElementGroup) InsertElementToBefore(elem *FragmentElement, mark *list.Element) *list.Element {
 	return t.elemList.InsertBefore(elem, mark)
 }
 
-func (t *FragmentElementSet) IterElementList(f func(elem *list.Element) bool) {
+func (t *FragmentElementGroup) IterElementList(f func(elem *list.Element) bool) {
 	for e := t.elemList.Front(); e != nil; e = e.Next() {
 		if !f(e) {
 			return
@@ -135,18 +135,18 @@ func (t *FragmentElementSet) IterElementList(f func(elem *list.Element) bool) {
 	}
 }
 
-func (t *FragmentElementSet) GetElementListLen() int {
+func (t *FragmentElementGroup) GetElementListLen() int {
 	return t.elemList.Len()
 }
 
-func (t *FragmentElementSet) Release() (clenListLen int) {
+func (t *FragmentElementGroup) Release() (clenListLen int) {
 	clenListLen = t.cleanUpElementList()
 	t.ptrFinalElem = nil
 	t.elemList = nil
 	return
 }
 
-func (t *FragmentElementSet) cleanUpElementList() int {
+func (t *FragmentElementGroup) cleanUpElementList() int {
 	var elems []*list.Element
 	for e := t.elemList.Front(); e != nil; e = e.Next() {
 		elems = append(elems, e)
@@ -167,11 +167,11 @@ func (t *FragmentElementSet) cleanUpElementList() int {
 	return len(elems)
 }
 
-func (t *FragmentElementSet) GetCreateTimestamp() int64 {
+func (t *FragmentElementGroup) GetCreateTimestamp() int64 {
 	return t.createTp
 }
 
-func (t *FragmentElementSet) GetAllElementsPayloadLen() uint16 {
+func (t *FragmentElementGroup) GetAllElementsPayloadLen() uint16 {
 	var totalPayloadLen int
 	for e := t.elemList.Front(); e != nil; e = e.Next() {
 		elem := e.Value.(*FragmentElement)

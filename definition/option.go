@@ -25,12 +25,18 @@ type CollectorOption struct {
 	MaxFullPktQueueLen uint32
 }
 
-type ClassifierOption struct {
-	MaxClassifiersNum uint32
+type CtrlApiServerOption struct {
+	Enable bool
+	Port   int
+}
+
+type StatsOption struct {
+	Enable bool
 }
 
 type Option struct {
-	PickFragmentTypes []FragmentType
-	CollectorOption   CollectorOption
-	ClassifierOption  ClassifierOption
+	CtrlApiServerOption CtrlApiServerOption
+	StatsOption         StatsOption
+	PickFragmentTypes   []FragmentType
+	CollectorOption     CollectorOption
 }

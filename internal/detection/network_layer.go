@@ -27,13 +27,13 @@ func (t *Detector) detectNetworkLayer(detectInfo *def.DetectionInfo) error {
 
 	hd := handler.GetHandler(mappingFragType)
 	if hd == nil {
-		libstats.AddTotalFilterHandleNilErrNum(1)
+		libstats.AddTotalDetectHandleNilErrNum(1)
 		return fmt.Errorf("handler with fragment type %v dose not exists", mappingFragType)
 	}
 
 	detectErr, detectErrType := hd.FastDetect(detectInfo)
 	if detectErr != nil {
-		libstats.AddTotalFilterErrStatsNum(1, detectErrType)
+		libstats.AddTotalDetectErrStatsNum(1, detectErrType)
 		return detectErr
 	}
 

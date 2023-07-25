@@ -3,7 +3,7 @@ package handler
 import (
 	"container/list"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	def "github.com/whaoinfo/net-defragmenter/definition"
@@ -14,7 +14,7 @@ type IPV6Handler struct{}
 
 func (t *IPV6Handler) FastDetect(detectInfo *def.DetectionInfo) (retErr error, retErrType def.ErrResultType) {
 	if len(detectInfo.EthPayload) <= def.IPV6HdrLen {
-		retErr = errors.New("unable to parse IPV6 package, len(detectInfo.EthPayload) <= IPV6HdrLen")
+		retErr = fmt.Errorf("the IPV6 packet header length less than %d", def.IPV6HdrLen)
 		retErrType = def.ErrResultIPV6HdrLenInsufficient
 		return
 	}
@@ -35,7 +35,7 @@ func (t *IPV6Handler) FastDetect(detectInfo *def.DetectionInfo) (retErr error, r
 	buf = buf[def.IPV6DstAddrLen:]
 
 	if len(buf) <= def.IPV6FragmentHdrLen {
-		retErr = errors.New("unable to parse IPV6 fragment header, len(retPayload) <= IPV6FragmentHdr")
+		retErr = fmt.Errorf("the IPV6 packet fragment header length less than %d", def.IPV6FragmentHdrLen)
 		retErrType = def.ErrResultIPV6FragHdrLenInsufficient
 		return
 	}
@@ -53,22 +53,20 @@ func (t *IPV6Handler) FastDetect(detectInfo *def.DetectionInfo) (retErr error, r
 	return
 }
 
-func (t *IPV6Handler) Collect(fragElem *common.FragmentElement, fragElemSet *common.FragmentElementSet) (error, def.ErrResultType) {
-	return collectFragmentElement(fragElem, fragElemSet)
+func (t *IPV6Handler) Collect(fragElem *common.FragmentElement, fragElemGroup *common.FragmentElementGroup) (error, def.ErrResultType) {
+	return collectFragmentElement(fragElem, fragElemGroup)
 }
 
-func (t *IPV6Handler) Reassembly(fragElemSet *common.FragmentElementSet,
+func (t *IPV6Handler) Reassembly(fragElemGroup *common.FragmentElementGroup,
 	sharedLayers *common.SharedLayers) (gopacket.Packet, error, def.ErrResultType) {
 
-	finalElem := fragElemSet.GetFinalElement()
-	payloadLen := fragElemSet.GetAllElementsPayloadLen()
+	finalElem := fragElemGroup.GetFinalElement()
+	payloadLen := fragElemGroup.GetAllElementsPayloadLen()
 
-	// layer2
 	sharedLayers.EthFrame.SrcMAC = finalElem.SrcMAC
 	sharedLayers.EthFrame.DstMAC = finalElem.DstMAC
 	sharedLayers.EthFrame.EthernetType = layers.EthernetTypeIPv6
 
-	// layer3
 	sharedLayers.IPV6.Length = payloadLen
 	sharedLayers.IPV6.NextHeader = finalElem.IPProtocol
 	sharedLayers.IPV6.SrcIP = finalElem.SrcIP
@@ -77,18 +75,17 @@ func (t *IPV6Handler) Reassembly(fragElemSet *common.FragmentElementSet,
 	fullPktBuff := sharedLayers.FullIPV6Buff
 	if err := gopacket.SerializeLayers(fullPktBuff, defaultSerializeOptions,
 		&sharedLayers.EthFrame, &sharedLayers.IPV6); err != nil {
-		return nil, err, def.ErrResultIPv4Serialize
+		return nil, err, def.ErrResultSerializeLayers
 	}
 
-	// layer4
 	freeLen := len(fullPktBuff.Bytes()) - def.EthIPV6HdrLen
 	_, appendErr := fullPktBuff.AppendBytes(int(payloadLen) - freeLen)
 	if appendErr != nil {
-		return nil, appendErr, def.ErrResultIPv4Serialize
+		return nil, appendErr, def.ErrResultFullPacketBufAppendBytes
 	}
 
 	payloadSpace := fullPktBuff.Bytes()[def.EthIPV6HdrLen:]
-	fragElemSet.IterElementList(func(elem *list.Element) bool {
+	fragElemGroup.IterElementList(func(elem *list.Element) bool {
 		fragElem := elem.Value.(*common.FragmentElement)
 		fragPayloadLen := fragElem.PayloadBuf.Len()
 		if fragPayloadLen <= 0 {
@@ -103,7 +100,7 @@ func (t *IPV6Handler) Reassembly(fragElemSet *common.FragmentElementSet,
 
 	retPkt := gopacket.NewPacket(fullPktBuff.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 	if retPkt.ErrorLayer() != nil {
-		return nil, retPkt.ErrorLayer().Error(), def.ErrResultIPV4NewPacket
+		return nil, retPkt.ErrorLayer().Error(), def.ErrResultTypeNewPacket
 	}
 	return retPkt, nil, def.NonErrResultType
 }
