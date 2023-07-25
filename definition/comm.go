@@ -20,7 +20,6 @@ const (
 	ErrResultIPV6NetworkLayerNil
 	ErrResultIPV6HdrLenInsufficient
 	ErrResultIPV6FragHdrLenInsufficient
-
 )
 
 const (
